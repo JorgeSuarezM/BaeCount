@@ -1,11 +1,14 @@
 /**
  * Servicio para conectar y parsear los datos de Google Sheets de BaeCount.
- * Funciona de forma dinámica sin credenciales de API utilizando la publicación web.
+ * Los datos se obtienen a través de /api/sheets, una función serverless en Vercel
+ * que actúa de proxy para evitar las restricciones CORS del navegador.
  */
 
-const SPREADSHEET_BASE_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTERGxox2YuRgvw3odjzNQEQPkPeFLgOWByvDnKyFnY6c7EQiZzuX7rpCn7Q1-DjUyXB7Lh7z6gBxSg';
-const PUB_HTML_URL = `${SPREADSHEET_BASE_URL}/pubhtml`;
-const CSV_URL = `${SPREADSHEET_BASE_URL}/pub?output=csv`;
+// URL del proxy serverless. En desarrollo local, Vite/el navegador también tiene CORS,
+// pero la función de Vercel resuelve esto en producción.
+// En desarrollo local, el fetch fallará si no se usa `vercel dev`. Se puede añadir
+// un polyfill local o ejecutar con `vercel dev` en lugar de `npm run dev`.
+const PROXY_URL = '/api/sheets';
 
 // Regex para detectar pestañas que representen meses (ej. Sep26, Ago26, Oct27)
 const MONTH_TAB_REGEX = /^[A-Za-z]{3,4}\d{2}$/;
@@ -103,11 +106,15 @@ export async function fetchAvailableMonths() {
  */
 export async function fetchMonthData(gid, monthName) {
   try {
-    // Usamos &sheet= en la URL en vez de &gid= para consultar directamente por nombre.
-    // El CSV público de Google Sheets cuenta con cabecera CORS abierta (Access-Control-Allow-Origin: *).
-    const url = `${CSV_URL}&sheet=${gid}&nocache=${Date.now()}`;
+    // Llamamos al proxy serverless de Vercel (/api/sheets) con el nombre de la pestaña.
+    // El proxy hace la petición a Google server-side (sin restricciones CORS) y nos devuelve el CSV.
+    const url = `${PROXY_URL}?sheet=${encodeURIComponent(gid)}`;
     const response = await fetch(url);
-    if (!response.ok) throw new Error(`No se pudo descargar los datos del mes: ${monthName}`);
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || `Error ${response.status} al descargar el mes: ${monthName}`);
+    }
     
     const csvText = await response.text();
     const lines = csvText.split(/\r?\n/);
