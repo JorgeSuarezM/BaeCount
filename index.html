@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>BaeCount - Finanzas Compartidas</title>
+    
+    <!-- Meta tags para SEO y PWA -->
+    <meta name="description" content="Organiza y consulta los gastos mensuales con tu pareja de forma proporcional." />
+    <meta name="theme-color" content="#8b5cf6" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="BaeCount" />
+    
+    <!-- Iconos y Manifiesto -->
+    <link rel="icon" type="image/png" href="/baecount_icon.png" />
+    <link rel="apple-touch-icon" href="/baecount_icon.png" />
+    <link rel="manifest" href="/manifest.json" />
+    
+    <!-- Google Fonts: Outfit e Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="app" class="app-container">
+      
+      <!-- Encabezado de la App -->
+      <header class="app-header">
+        <div class="header-main">
+          <div class="logo-area">
+            <img src="/baecount_icon.png" alt="BaeCount Logo" class="header-logo" />
+            <h1 class="app-title">BaeCount</h1>
+          </div>
+          <!-- Selector de Meses -->
+          <div class="month-selector-wrapper">
+            <select id="month-select" class="month-dropdown" aria-label="Seleccionar mes financiero">
+              <option value="Sep26">Sep 26</option>
+            </select>
+          </div>
+        </div>
+        
+        <!-- Estado de Conexión/Sincronización -->
+        <div class="status-bar">
+          <span id="status-indicator-dot" class="status-dot online"></span>
+          <span id="status-text" class="status-text">Sincronizado con Google Sheets</span>
+        </div>
+      </header>
+
+      <!-- Contenedor de Vistas Principal -->
+      <main class="app-content">
+        
+        <!-- VISTA 1: RESUMEN FINANCIERO -->
+        <section id="resumen-view" class="view-pane active">
+          
+          <!-- Cargador (Skeleton Screen) -->
+          <div id="resumen-skeleton" class="skeleton-container hidden">
+            <div class="skeleton-card skeleton-balance"></div>
+            <div class="skeleton-card skeleton-aportaciones"></div>
+            <div class="skeleton-card skeleton-list"></div>
+          </div>
+          
+          <!-- Contenido del Resumen -->
+          <div id="resumen-content">
+            
+            <!-- Tarjeta de Balance General -->
+            <div class="card balance-card">
+              <h2 class="card-subtitle">Balance del Mes</h2>
+              <div class="balance-grid">
+                <div class="balance-stat">
+                  <span class="stat-label">Ingresos Totales</span>
+                  <span id="balance-incomes-real" class="stat-value income-color">0,00 €</span>
+                  <span id="balance-incomes-expected" class="stat-expected">Previsto: 0,00 €</span>
+                </div>
+                <div class="balance-separator"></div>
+                <div class="balance-stat">
+                  <span class="stat-label">Gastos Totales</span>
+                  <span id="balance-expenses-real" class="stat-value expense-color">0,00 €</span>
+                  <span id="balance-expenses-expected" class="stat-expected">Previsto: 0,00 €</span>
+                </div>
+              </div>
+              
+              <!-- Barra de Progreso Gastos vs Ingresos -->
+              <div class="progress-bar-container">
+                <div class="progress-bar-labels">
+                  <span class="progress-label">Presupuesto Ejecutado</span>
+                  <span id="progress-percentage-label" class="progress-percentage">0%</span>
+                </div>
+                <div class="progress-bar-bg">
+                  <div id="expenses-progress-bar" class="progress-bar-fill" style="width: 0%;"></div>
+                </div>
+                <div class="savings-info">
+                  <span>Ahorro Real: <strong id="savings-real-val">0,00 €</strong></span>
+                  <span class="savings-expected">Previsto: <span id="savings-expected-val">0,00 €</span></span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tarjeta de Aportaciones Proporcionales -->
+            <div class="card contributions-card">
+              <h2 class="card-title-small">Aportaciones Proporcionales</h2>
+              <p class="contributions-intro">Cálculo proporcional según ingresos individuales:</p>
+              
+              <div class="partners-grid">
+                <!-- Jorge -->
+                <div class="partner-card">
+                  <div class="partner-header">
+                    <span class="partner-avatar bg-jorge">Jo</span>
+                    <span class="partner-name">Jorge</span>
+                  </div>
+                  <div class="partner-stats">
+                    <div class="partner-stat-row">
+                      <span class="p-stat-label">Aportación Real</span>
+                      <span id="jorge-contrib-real" class="p-stat-val">0,00 €</span>
+                    </div>
+                    <div class="partner-stat-row">
+                      <span class="p-stat-label">Esperado</span>
+                      <span id="jorge-contrib-expected" class="p-stat-val-expected">0,00 €</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <!-- José -->
+                <div class="partner-card">
+                  <div class="partner-header">
+                    <span class="partner-avatar bg-jose">Js</span>
+                    <span class="partner-name">José</span>
+                  </div>
+                  <div class="partner-stats">
+                    <div class="partner-stat-row">
+                      <span class="p-stat-label">Aportación Real</span>
+                      <span id="jose-contrib-real" class="p-stat-val">0,00 €</span>
+                    </div>
+                    <div class="partner-stat-row">
+                      <span class="p-stat-label">Esperado</span>
+                      <span id="jose-contrib-expected" class="p-stat-val-expected">0,00 €</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Selector de Desglose (Ingresos / Gastos) -->
+            <div class="desglose-toggle-container">
+              <button id="toggle-expenses-btn" class="toggle-btn active">Gastos</button>
+              <button id="toggle-incomes-btn" class="toggle-btn">Ingresos</button>
+            </div>
+
+            <!-- Listado Detallado de Items -->
+            <div class="card list-card">
+              <div class="list-header">
+                <span class="list-col-name">Concepto</span>
+                <span class="list-col-expected">Previsto</span>
+                <span class="list-col-real">Real</span>
+              </div>
+              <ul id="items-list" class="items-list">
+                <!-- Se rellena dinámicamente -->
+              </ul>
+            </div>
+
+            <!-- Gráficos de Tendencias -->
+            <div class="card chart-card">
+              <h2 class="card-title-small">Tendencias (Últimos 3 meses)</h2>
+              <div class="chart-container">
+                <canvas id="trends-chart" height="220" aria-label="Gráfico de evolución mensual"></canvas>
+              </div>
+            </div>
+            
+          </div>
+        </section>
+
+        <!-- VISTA 2: DESCARGA DE PDF -->
+        <section id="pdf-view" class="view-pane">
+          <div class="card pdf-card">
+            <div class="pdf-icon-wrapper">
+              <svg xmlns="http://www.w3.org/2000/svg" class="pdf-hero-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <path d="M12 18v-6"/>
+                <polyline points="9 15 12 18 15 15"/>
+              </svg>
+            </div>
+            <h2 class="pdf-title">Exportar Extracto en PDF</h2>
+            <p class="pdf-desc">Descarga un documento resumen estilizado de tus finanzas. Selecciona el mes o rango de meses que deseas exportar.</p>
+            
+            <div class="pdf-form">
+              <!-- Mes Desde -->
+              <div class="form-group">
+                <label for="pdf-from-select" class="form-label">Desde:</label>
+                <select id="pdf-from-select" class="pdf-dropdown" aria-label="Mes inicial de la exportación">
+                  <option value="Sep26">Sep 26</option>
+                </select>
+              </div>
+              
+              <!-- Mes Hasta -->
+              <div class="form-group">
+                <label for="pdf-to-select" class="form-label">Hasta:</label>
+                <select id="pdf-to-select" class="pdf-dropdown" aria-label="Mes final de la exportación">
+                  <option value="Sep26">Sep 26</option>
+                </select>
+              </div>
+              
+              <!-- Botón Descargar -->
+              <button id="download-pdf-btn" class="btn btn-primary" aria-label="Descargar extracto en PDF">
+                <span id="btn-text">Descargar PDF</span>
+                <span id="btn-loader" class="btn-spinner hidden"></span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+      </main>
+
+      <!-- Navegación Inferior (Tabs) -->
+      <nav class="bottom-nav">
+        <button id="tab-resumen" class="nav-item active" aria-label="Ver resumen de gastos e ingresos" aria-selected="true">
+          <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"/>
+            <line x1="12" y1="20" x2="12" y2="4"/>
+            <line x1="6" y1="20" x2="6" y2="14"/>
+          </svg>
+          <span class="nav-text">Resumen</span>
+        </button>
+        <button id="tab-pdf" class="nav-item" aria-label="Exportar datos financieros a PDF" aria-selected="false">
+          <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span class="nav-text">Exportar PDF</span>
+        </button>
+      </nav>
+
+    </div>
+    
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
