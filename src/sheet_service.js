@@ -59,49 +59,53 @@ function parseSpanishNumber(val) {
 }
 
 /**
- * Obtiene la lista de pestañas del Google Sheet publicado y sus respectivos gids.
+ * Genera la lista de meses disponibles programáticamente desde Septiembre de 2026.
+ * Esto evita el bloqueo CORS al intentar descargar el HTML completo (/pubhtml).
  * @returns {Promise<{name: string, gid: string}[]>}
  */
 export async function fetchAvailableMonths() {
   try {
-    // Para evitar cacheos agresivos del navegador
-    const response = await fetch(`${PUB_HTML_URL}?usp=chrome_extension&nocache=${Date.now()}`);
-    if (!response.ok) throw new Error('No se pudo cargar la hoja de cálculo pública.');
-    
-    const html = await response.text();
-    
-    // Buscar la inicialización de pestañas en el código JS embebido de Google Sheets:
-    // items.push({name: "Sep26", pageUrl: "...", gid: "7725638", ...})
-    const regex = /items\.push\(\{\s*name:\s*"([^"]+)",\s*pageUrl:\s*"[^"]+",\s*gid:\s*"([^"]+)"/g;
+    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    const startMonth = 8; // Septiembre (0-indexed es 8)
+    const startYear = 2026;
+
+    const targetDate = new Date();
+    // Mostrar hasta 12 meses en el futuro con respecto a la fecha actual
+    targetDate.setMonth(targetDate.getMonth() + 12);
+
     const sheets = [];
-    let match;
-    
-    while ((match = regex.exec(html)) !== null) {
-      const name = match[1];
-      const gid = match[2];
-      
-      // Filtrar y quedarnos solo con las pestañas de meses
-      if (MONTH_TAB_REGEX.test(name)) {
-        sheets.push({ name, gid });
+    let currMonth = startMonth;
+    let currYear = startYear;
+
+    while (currYear < targetDate.getFullYear() || (currYear === targetDate.getFullYear() && currMonth <= targetDate.getMonth())) {
+      const monthCode = `${months[currMonth]}${String(currYear).slice(-2)}`;
+      sheets.push({ name: monthCode, gid: monthCode });
+
+      currMonth++;
+      if (currMonth > 11) {
+        currMonth = 0;
+        currYear++;
       }
     }
-    
+
     return sheets;
   } catch (error) {
-    console.error('Error al recuperar las pestañas de Google Sheets:', error);
+    console.error('Error al generar las pestañas de meses:', error);
     throw error;
   }
 }
 
 /**
  * Descarga y parsea la información financiera de un mes específico.
- * @param {string} gid ID de la pestaña
+ * @param {string} gid Nombre de la pestaña (ej. Sep26) pasado como GID por compatibilidad
  * @param {string} monthName Nombre de la pestaña (ej. Sep26)
  * @returns {Promise<Object>} Datos financieros estructurados
  */
 export async function fetchMonthData(gid, monthName) {
   try {
-    const url = `${CSV_URL}&gid=${gid}&nocache=${Date.now()}`;
+    // Usamos &sheet= en la URL en vez de &gid= para consultar directamente por nombre.
+    // El CSV público de Google Sheets cuenta con cabecera CORS abierta (Access-Control-Allow-Origin: *).
+    const url = `${CSV_URL}&sheet=${gid}&nocache=${Date.now()}`;
     const response = await fetch(url);
     if (!response.ok) throw new Error(`No se pudo descargar los datos del mes: ${monthName}`);
     
