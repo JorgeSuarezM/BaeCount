@@ -146,7 +146,10 @@
               </div>
             </div>
 
-            <!-- Selector de Desglose (Ingresos / Gastos) -->
+            <!-- Selector de Desglose (Ingresos / Gastos).
+                 El envoltorio solo existe para el layout de escritorio: en móvil es
+                 `display: contents` y no altera nada. -->
+            <div class="desglose-column">
             <div class="desglose-toggle-container">
               <button id="toggle-expenses-btn" class="toggle-btn active" type="button" aria-pressed="true">Gastos</button>
               <button id="toggle-incomes-btn" class="toggle-btn" type="button" aria-pressed="false">Ingresos</button>
@@ -162,6 +165,7 @@
               <ul id="items-list" class="items-list">
                 <!-- Se rellena dinámicamente -->
               </ul>
+            </div>
             </div>
 
             <!-- Gráficos de Tendencias -->

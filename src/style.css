@@ -34,6 +34,10 @@
   --expense-red: #f43f5e;
   --expense-red-glow: 0 0 12px rgba(244, 63, 94, 0.3);
 
+  /* Layout de escritorio */
+  --desktop-nav-width: 210px;
+  --desktop-content-max: 1500px;
+
   /* Nav y Barra Inferior */
   --nav-bg: rgba(18, 9, 31, 0.85);
   --nav-border: rgba(139, 92, 246, 0.12);
@@ -269,9 +273,11 @@ html, body {
   transition: transform 0.3s ease, border-color 0.3s ease, background 0.3s ease;
 }
 
-.card:hover {
-  background: var(--card-bg-hover);
-  border-color: var(--card-border-active);
+@media (hover: hover) {
+  .card:hover {
+    background: var(--card-bg-hover);
+    border-color: var(--card-border-active);
+  }
 }
 
 /* Títulos de las Tarjetas */
@@ -466,8 +472,10 @@ html, body {
   transition: background 0.3s ease;
 }
 
-.partner-card:hover {
-  background: rgba(255, 255, 255, 0.04);
+@media (hover: hover) {
+  .partner-card:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
 }
 
 .partner-header {
@@ -538,6 +546,11 @@ html, body {
 /* ==========================================================================
    Selector de Desglose (Toggle)
    ========================================================================== */
+/* Solo agrupa para el grid de escritorio; en móvil no debe existir en el layout. */
+.desglose-column {
+  display: contents;
+}
+
 .desglose-toggle-container {
   display: flex;
   background: rgba(18, 9, 31, 0.7);
@@ -599,8 +612,6 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 380px;
-  overflow-y: auto;
 }
 
 .item-row {
@@ -616,8 +627,10 @@ html, body {
   border-bottom: none;
 }
 
-.item-row:hover {
-  background: rgba(255, 255, 255, 0.01);
+@media (hover: hover) {
+  .item-row:hover {
+    background: rgba(255, 255, 255, 0.01);
+  }
 }
 
 .item-name {
@@ -686,6 +699,7 @@ html, body {
 .chart-container {
   position: relative;
   width: 100%;
+  height: 240px; /* Chart.js necesita una altura concreta con maintainAspectRatio: false */
   margin-top: 10px;
 }
 
@@ -972,4 +986,227 @@ html, body {
 @keyframes skeleton-shimmer {
   from { transform: translateX(-100%); }
   to { transform: translateX(100%); }
+}
+
+/* ==========================================================================
+   ESCRITORIO (>= 1024px)
+   La versión móvil es una app de columna única con el scroll dentro de
+   .app-content y la navegación abajo. En escritorio eso deja una franja
+   estrecha centrada y una rueda de ratón que no mueve la página, así que
+   aquí se cambia el modelo: scroll del documento, ancho completo,
+   navegación lateral fija y el contenido repartido en dos columnas.
+   ========================================================================== */
+@media (min-width: 1024px) {
+  /* El scroll pasa a ser el del documento */
+  html,
+  body {
+    overflow: visible;
+    height: auto;
+  }
+
+  .app-container {
+    max-width: none;
+    width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    padding-left: var(--desktop-nav-width);
+    border-left: none;
+    border-right: none;
+    box-shadow: none;
+    background-image: var(--bg-glow);
+    background-attachment: fixed;
+  }
+
+  /* --- Cabecera: una sola fila, pegada arriba al hacer scroll --- */
+  .app-header {
+    position: sticky;
+    top: 0;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding: 18px 40px;
+  }
+
+  .header-main {
+    flex: 1;
+    justify-content: flex-start;
+    gap: 32px;
+    margin-bottom: 0;
+    min-width: 0;
+  }
+
+  .app-title {
+    font-size: 1.35rem;
+  }
+
+  .header-logo {
+    width: 36px;
+    height: 36px;
+  }
+
+  .month-dropdown {
+    min-width: 150px;
+  }
+
+  .status-bar {
+    flex-shrink: 0;
+  }
+
+  .refresh-btn {
+    margin-left: 8px;
+    width: 32px;
+    height: 32px;
+  }
+
+  .refresh-icon {
+    width: 17px;
+    height: 17px;
+  }
+
+  /* --- Contenido: sin scroll propio, centrado y ancho --- */
+  .app-content {
+    flex: none;
+    overflow: visible;
+    padding: 28px 40px 48px;
+    max-width: var(--desktop-content-max);
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* Dos columnas: a la izquierda las cifras del mes, a la derecha el detalle.
+     La lista de conceptos es lo que más crece, así que se lleva la columna alta. */
+  #resumen-content {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-areas:
+      "balance  desglose"
+      "partners desglose"
+      "chart    desglose";
+    grid-template-rows: auto auto 1fr;
+    gap: 0 28px;
+    align-items: start;
+  }
+
+  .balance-card { grid-area: balance; }
+  .contributions-card { grid-area: partners; }
+  .chart-card { grid-area: chart; }
+
+  /* El toggle y la lista van juntos en una única celda: como celdas sueltas, el
+     toggle se alineaba con la tarjeta de balance y dejaba un hueco muerto encima
+     de la lista. */
+  .desglose-column {
+    display: flex;
+    flex-direction: column;
+    grid-area: desglose;
+  }
+
+  /* En una sola columna el margen inferior separaba las tarjetas; con grid lo
+     hace el gap, y mantenerlo descuadraría las dos columnas. */
+  #resumen-content > .card {
+    margin-bottom: 20px;
+  }
+
+  .desglose-column .list-card {
+    margin-bottom: 0;
+  }
+
+  .chart-container {
+    height: 300px;
+  }
+
+  /* Más aire en las filas ahora que hay ancho de sobra */
+  .item-row {
+    padding: 11px 2px;
+  }
+
+  .balance-grid {
+    margin-bottom: 24px;
+  }
+
+  /* --- Navegación lateral en lugar de barra inferior --- */
+  .bottom-nav {
+    top: 0;
+    bottom: 0;
+    left: 0;
+    transform: none;
+    width: var(--desktop-nav-width);
+    max-width: none;
+    height: 100dvh;
+    grid-template-columns: none;
+    grid-auto-rows: max-content;
+    align-content: start;
+    gap: 6px;
+    padding: 24px 12px;
+    border-top: none;
+    border-right: 1px solid var(--nav-border);
+  }
+
+  .nav-item {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    text-align: left;
+  }
+
+  .nav-item:hover {
+    opacity: 0.8;
+    background: rgba(139, 92, 246, 0.06);
+  }
+
+  .nav-item.active {
+    background: rgba(139, 92, 246, 0.12);
+  }
+
+  .nav-text {
+    font-size: 0.875rem;
+  }
+
+  /* La pastilla superior del tab activo es un gesto de barra inferior:
+     en vertical se convierte en un indicador lateral. */
+  .nav-item.active::after {
+    top: 50%;
+    left: 0;
+    width: 3px;
+    height: 22px;
+    transform: translateY(-50%);
+  }
+
+  /* --- Vista de exportación --- */
+  .pdf-card {
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .pdf-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px 20px;
+  }
+
+  .pdf-form .btn {
+    grid-column: 1 / -1;
+  }
+
+  /* El skeleton también se reparte en dos columnas para que la carga no
+     desplace el contenido al aparecer */
+  .skeleton-container {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 20px 28px;
+  }
+
+  .skeleton-list {
+    grid-row: span 2;
+    height: 100%;
+    min-height: 320px;
+  }
+}
+
+/* Pantallas grandes: un poco más de aire sin dejar que las líneas se estiren */
+@media (min-width: 1600px) {
+  .app-content {
+    padding: 36px 56px 64px;
+  }
 }
