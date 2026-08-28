@@ -8,6 +8,7 @@ let availableMonths = []; // Array de {name, gid}
 let activeMonthData = null; // Datos ya parseados del mes en pantalla
 let activeMonthName = '';
 let activeDesgloseTab = 'expenses'; // 'expenses' | 'incomes'
+let isRefreshing = false; // Evita recargas solapadas si se pulsa el botón varias veces
 let historicalMonthsCache = {}; // Cache: { 'Sep26': monthData }
 
 // Fallback por defecto indicado por el usuario
@@ -17,6 +18,7 @@ const DEFAULT_FALLBACK_MONTH = 'Sep26';
 const monthSelect = document.getElementById('month-select');
 const statusDot = document.getElementById('status-indicator-dot');
 const statusText = document.getElementById('status-text');
+const refreshBtn = document.getElementById('refresh-btn');
 
 const resumenView = document.getElementById('resumen-view');
 const resumenSkeleton = document.getElementById('resumen-skeleton');
@@ -302,7 +304,86 @@ async function loadFinancialData(monthName) {
   }
 }
 
+/**
+ * Rellena los tres selectores de mes a partir de `availableMonths`,
+ * conservando la selección previa cuando el mes sigue existiendo.
+ */
+function populateMonthSelectors() {
+  const previous = {
+    month: monthSelect.value,
+    from: pdfFromSelect.value,
+    to: pdfToSelect.value,
+  };
+
+  monthSelect.innerHTML = '';
+  pdfFromSelect.innerHTML = '';
+  pdfToSelect.innerHTML = '';
+
+  availableMonths.forEach(m => {
+    // Reemplazar etiqueta visual por una más amigable (ej. Sep26 -> Sep 26)
+    const match = m.name.match(/^([A-Za-z]{3,4})(\d{2})$/);
+    const label = match ? `${match[1]} ${match[2]}` : m.name;
+
+    const opt = document.createElement('option');
+    opt.value = m.name;
+    opt.textContent = label;
+
+    monthSelect.appendChild(opt.cloneNode(true));
+    pdfFromSelect.appendChild(opt.cloneNode(true));
+    pdfToSelect.appendChild(opt.cloneNode(true));
+  });
+
+  const exists = (name) => availableMonths.some(m => m.name === name);
+  if (exists(previous.month)) monthSelect.value = previous.month;
+  if (exists(previous.from)) pdfFromSelect.value = previous.from;
+  if (exists(previous.to)) pdfToSelect.value = previous.to;
+}
+
+/**
+ * Vuelve a descargar todo desde Google Sheets, descartando lo ya cargado.
+ * Relee también la lista de pestañas, así que un mes nuevo creado en el documento
+ * aparece en el selector sin tener que tocar código ni volver a desplegar.
+ */
+async function refreshData() {
+  if (isRefreshing) return;
+
+  isRefreshing = true;
+  refreshBtn.disabled = true;
+  refreshBtn.classList.add('is-refreshing');
+
+  try {
+    // Descartar lo cacheado en memoria para forzar la descarga de todos los meses
+    historicalMonthsCache = {};
+
+    // Releer las pestañas. Si falla, seguimos con las que ya conocíamos:
+    // es preferible refrescar solo las cifras a dejar la pantalla sin datos.
+    try {
+      const months = await fetchAvailableMonths();
+      if (months.length > 0) {
+        availableMonths = months;
+        populateMonthSelectors();
+
+        if (!availableMonths.some(m => m.name === activeMonthName)) {
+          activeMonthName = availableMonths[availableMonths.length - 1].name;
+          monthSelect.value = activeMonthName;
+        }
+      }
+    } catch (error) {
+      console.warn('No se pudo releer la lista de pestañas, se mantiene la anterior:', error);
+    }
+
+    await loadFinancialData(activeMonthName);
+  } finally {
+    isRefreshing = false;
+    refreshBtn.disabled = false;
+    refreshBtn.classList.remove('is-refreshing');
+  }
+}
+
 // --- EVENT LISTENERS DE CONTROLES ---
+
+// Botón de actualización manual
+refreshBtn.addEventListener('click', refreshData);
 
 // Selector de mes en cabecera
 monthSelect.addEventListener('change', (e) => {
@@ -392,24 +473,7 @@ async function init() {
     }
 
     // fetchAvailableMonths ya las devuelve ordenadas cronológicamente.
-    // Llenar selectores del DOM
-    monthSelect.innerHTML = '';
-    pdfFromSelect.innerHTML = '';
-    pdfToSelect.innerHTML = '';
-
-    availableMonths.forEach(m => {
-      // Reemplazar etiqueta visual por una más amigable (ej. Sep26 -> Sep 26)
-      const match = m.name.match(/^([A-Za-z]{3,4})(\d{2})$/);
-      const label = match ? `${match[1]} ${match[2]}` : m.name;
-
-      const opt = document.createElement('option');
-      opt.value = m.name;
-      opt.textContent = label;
-      
-      monthSelect.appendChild(opt.cloneNode(true));
-      pdfFromSelect.appendChild(opt.cloneNode(true));
-      pdfToSelect.appendChild(opt.cloneNode(true));
-    });
+    populateMonthSelectors();
 
     // 2. Determinar mes actual
     const currentCode = getCurrentMonthCode();
@@ -443,3 +507,12 @@ async function init() {
 
 // Ejecutar init al cargar la página
 window.addEventListener('DOMContentLoaded', init);
+
+// Al volver atrás/adelante (o al reabrir la PWA) el navegador puede restaurar la página
+// desde la bfcache sin lanzar DOMContentLoaded. En ese caso los datos en pantalla son
+// los de la última visita, así que los volvemos a descargar.
+window.addEventListener('pageshow', (event) => {
+  if (event.persisted && availableMonths.length > 0) {
+    refreshData();
+  }
+});

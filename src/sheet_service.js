@@ -9,6 +9,10 @@
 
 const PROXY_URL = '/api/sheets';
 
+// Opciones de fetch para no leer nunca de la caché del navegador: los datos del Sheet
+// cambian a mano y hay que ver el último valor tanto al recargar como al pulsar "Actualizar".
+const NO_CACHE = { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } };
+
 // Pestañas que representan meses: Sep26, Ago26, Oct27...
 const MONTH_TAB_REGEX = /^([A-Za-z]{3,4})(\d{2})$/;
 
@@ -86,7 +90,7 @@ function parseSpanishNumber(val) {
  * @returns {Promise<{name: string, gid: string}[]>}
  */
 export async function fetchAvailableMonths() {
-  const response = await fetch(`${PROXY_URL}?list=1`);
+  const response = await fetch(`${PROXY_URL}?list=1&t=${Date.now()}`, NO_CACHE);
 
   if (!response.ok) {
     const errData = await response.json().catch(() => ({}));
@@ -112,8 +116,9 @@ export async function fetchMonthData(gid, monthName) {
   try {
     // Llamamos al proxy serverless de Vercel (/api/sheets) con el gid de la pestaña.
     // El proxy hace la petición a Google server-side (sin restricciones CORS) y nos devuelve el CSV.
-    const url = `${PROXY_URL}?gid=${encodeURIComponent(gid)}`;
-    const response = await fetch(url);
+    // El sufijo `t` evita cachés intermedias que ignoren las cabeceras no-store.
+    const url = `${PROXY_URL}?gid=${encodeURIComponent(gid)}&t=${Date.now()}`;
+    const response = await fetch(url, NO_CACHE);
 
     if (!response.ok) {
       const errData = await response.json().catch(() => ({}));

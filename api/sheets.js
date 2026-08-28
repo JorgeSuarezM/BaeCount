@@ -6,6 +6,10 @@
  *   GET /api/sheets?list=1   -> JSON con las pestañas reales del documento: [{ name, gid }]
  *   GET /api/sheets?gid=NNN  -> CSV de esa pestaña
  *
+ * No se cachea ninguna respuesta: la gracia de la app es ver en el móvil lo que se acaba
+ * de escribir en el Sheet, así que cada recarga o pulsación de "Actualizar" debe llegar
+ * hasta Google. Con s-maxage el CDN de Vercel servía datos de hasta 5 minutos antes.
+ *
  * Importante: en un documento "publicado en la web" (/d/e/2PACX-...) Google IGNORA el
  * parámetro ?sheet=<nombre>. La única forma de elegir pestaña es el gid numérico, que
  * obtenemos leyendo /pubhtml server-side.
@@ -31,6 +35,7 @@ async function fetchSheetList() {
   const response = await fetch(`${SPREADSHEET_BASE_URL}/pubhtml`, {
     headers: { 'User-Agent': 'BaeCount/1.0' },
     redirect: 'follow',
+    cache: 'no-store',
   });
 
   if (!response.ok) {
@@ -55,6 +60,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -72,7 +78,6 @@ export default async function handler(req, res) {
         });
       }
 
-      res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
       return res.status(200).json({ sheets });
     }
 
@@ -90,6 +95,7 @@ export default async function handler(req, res) {
     const response = await fetch(googleUrl, {
       headers: { 'User-Agent': 'BaeCount/1.0' },
       redirect: 'follow',
+      cache: 'no-store',
     });
 
     if (!response.ok) {
@@ -105,7 +111,6 @@ export default async function handler(req, res) {
     }
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
     return res.status(200).send(csvText);
   } catch (error) {
     console.error('Error al conectar con Google Sheets:', error);

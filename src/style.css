@@ -202,6 +202,50 @@ html, body {
   font-weight: 500;
 }
 
+/* Botón de actualización manual, alineado al extremo de la barra de estado */
+.refresh-btn {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--card-border);
+  background: var(--card-bg);
+  color: var(--text-lavender);
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.refresh-btn:hover:not(:disabled) {
+  background: var(--card-bg-hover);
+  border-color: var(--card-border-active);
+  color: var(--text-white);
+}
+
+.refresh-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.refresh-btn:disabled {
+  cursor: progress;
+  color: var(--accent-violet-light);
+  border-color: var(--card-border-active);
+}
+
+.refresh-icon {
+  width: 15px;
+  height: 15px;
+}
+
+/* Mientras se descargan los datos, el icono gira */
+.refresh-btn.is-refreshing .refresh-icon {
+  animation: spin 0.8s linear infinite;
+}
+
 /* ==========================================================================
    Contenido Principal e Interfaz de Paneles (Scroll)
    ========================================================================== */
