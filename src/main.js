@@ -5,6 +5,7 @@ import { exportMonthsToPDF } from './pdf_service.js';
 
 // --- CONFIGURACIÓN Y ESTADO DE LA APP ---
 let availableMonths = []; // Array de {name, gid}
+let activeMonthData = null; // Datos ya parseados del mes en pantalla
 let activeMonthName = '';
 let activeDesgloseTab = 'expenses'; // 'expenses' | 'incomes'
 let historicalMonthsCache = {}; // Cache: { 'Sep26': monthData }
@@ -385,11 +386,12 @@ async function init() {
     availableMonths = await fetchAvailableMonths();
     
     if (availableMonths.length === 0) {
-      throw new Error('No se encontraron pestañas válidas de meses en el Google Sheet.');
+      throw new Error(
+        'No se encontró ninguna pestaña con formato de mes (ej. Sep26) en el Google Sheet.'
+      );
     }
 
-    // Ordenar cronológicamente (esperando que Google Sheets las devuelva en orden, pero podemos validar)
-    // Google Sheets pubhtml suele listar en el orden en que están colocadas las pestañas.
+    // fetchAvailableMonths ya las devuelve ordenadas cronológicamente.
     // Llenar selectores del DOM
     monthSelect.innerHTML = '';
     pdfFromSelect.innerHTML = '';
@@ -433,7 +435,7 @@ async function init() {
     console.error('Fallo en la inicialización:', error);
     statusDot.className = 'status-dot offline';
     statusText.textContent = 'Error al conectar con la hoja de cálculo.';
-    alert('Error al inicializar BaeCount. Asegúrate de que el documento Google Sheets está publicado correctamente.');
+    alert(`Error al inicializar BaeCount: ${error.message}`);
   } finally {
     toggleLoading(false);
   }

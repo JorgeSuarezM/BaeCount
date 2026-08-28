@@ -2,16 +2,34 @@
  * Servicio para conectar y parsear los datos de Google Sheets de BaeCount.
  * Los datos se obtienen a través de /api/sheets, una función serverless en Vercel
  * que actúa de proxy para evitar las restricciones CORS del navegador.
+ *
+ * En desarrollo hay que levantar el proyecto con `vercel dev` para que /api/sheets exista;
+ * con `npm run dev` (Vite a secas) esa ruta no está servida.
  */
 
-// URL del proxy serverless. En desarrollo local, Vite/el navegador también tiene CORS,
-// pero la función de Vercel resuelve esto en producción.
-// En desarrollo local, el fetch fallará si no se usa `vercel dev`. Se puede añadir
-// un polyfill local o ejecutar con `vercel dev` en lugar de `npm run dev`.
 const PROXY_URL = '/api/sheets';
 
-// Regex para detectar pestañas que representen meses (ej. Sep26, Ago26, Oct27)
-const MONTH_TAB_REGEX = /^[A-Za-z]{3,4}\d{2}$/;
+// Pestañas que representan meses: Sep26, Ago26, Oct27...
+const MONTH_TAB_REGEX = /^([A-Za-z]{3,4})(\d{2})$/;
+
+const MONTH_CODES = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+/**
+ * Convierte un código de mes en un número ordenable (ej. Sep26 -> 2026 * 12 + 8).
+ * @param {string} name
+ * @returns {number|null} null si el nombre no es un código de mes válido
+ */
+function monthSortKey(name) {
+  const match = name.match(MONTH_TAB_REGEX);
+  if (!match) return null;
+
+  const monthIndex = MONTH_CODES.findIndex(
+    (code) => code.toLowerCase() === match[1].toLowerCase()
+  );
+  if (monthIndex === -1) return null;
+
+  return (2000 + Number(match[2])) * 12 + monthIndex;
+}
 
 /**
  * Parsea una línea de CSV respetando las comillas para textos con comas.
@@ -62,53 +80,39 @@ function parseSpanishNumber(val) {
 }
 
 /**
- * Genera la lista de meses disponibles programáticamente desde Septiembre de 2026.
- * Esto evita el bloqueo CORS al intentar descargar el HTML completo (/pubhtml).
+ * Obtiene las pestañas de mes que existen realmente en el documento.
+ * El proxy lee /pubhtml server-side y devuelve el nombre y el gid de cada pestaña;
+ * aquí nos quedamos solo con las que tienen forma de mes y las ordenamos cronológicamente.
  * @returns {Promise<{name: string, gid: string}[]>}
  */
 export async function fetchAvailableMonths() {
-  try {
-    const months = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
-    const startMonth = 8; // Septiembre (0-indexed es 8)
-    const startYear = 2026;
+  const response = await fetch(`${PROXY_URL}?list=1`);
 
-    const targetDate = new Date();
-    // Mostrar hasta 12 meses en el futuro con respecto a la fecha actual
-    targetDate.setMonth(targetDate.getMonth() + 12);
-
-    const sheets = [];
-    let currMonth = startMonth;
-    let currYear = startYear;
-
-    while (currYear < targetDate.getFullYear() || (currYear === targetDate.getFullYear() && currMonth <= targetDate.getMonth())) {
-      const monthCode = `${months[currMonth]}${String(currYear).slice(-2)}`;
-      sheets.push({ name: monthCode, gid: monthCode });
-
-      currMonth++;
-      if (currMonth > 11) {
-        currMonth = 0;
-        currYear++;
-      }
-    }
-
-    return sheets;
-  } catch (error) {
-    console.error('Error al generar las pestañas de meses:', error);
-    throw error;
+  if (!response.ok) {
+    const errData = await response.json().catch(() => ({}));
+    throw new Error(errData.error || `Error ${response.status} al listar las pestañas del documento.`);
   }
+
+  const { sheets = [] } = await response.json();
+
+  return sheets
+    .map((sheet) => ({ ...sheet, sortKey: monthSortKey(sheet.name) }))
+    .filter((sheet) => sheet.sortKey !== null)
+    .sort((a, b) => a.sortKey - b.sortKey)
+    .map(({ name, gid }) => ({ name, gid }));
 }
 
 /**
  * Descarga y parsea la información financiera de un mes específico.
- * @param {string} gid Nombre de la pestaña (ej. Sep26) pasado como GID por compatibilidad
+ * @param {string} gid GID numérico de la pestaña (ej. "7725638")
  * @param {string} monthName Nombre de la pestaña (ej. Sep26)
  * @returns {Promise<Object>} Datos financieros estructurados
  */
 export async function fetchMonthData(gid, monthName) {
   try {
-    // Llamamos al proxy serverless de Vercel (/api/sheets) con el nombre de la pestaña.
+    // Llamamos al proxy serverless de Vercel (/api/sheets) con el gid de la pestaña.
     // El proxy hace la petición a Google server-side (sin restricciones CORS) y nos devuelve el CSV.
-    const url = `${PROXY_URL}?sheet=${encodeURIComponent(gid)}`;
+    const url = `${PROXY_URL}?gid=${encodeURIComponent(gid)}`;
     const response = await fetch(url);
 
     if (!response.ok) {
@@ -146,9 +150,11 @@ export async function fetchMonthData(gid, monthName) {
     for (let line of lines) {
       if (!line.trim()) continue;
       const columns = parseCSVLine(line);
-      if (columns.length === 0 || !columns[0]) continue;
+      // Solo descartamos las filas separadoras (",,"). La fila del balance real llega
+      // como ",Real,0", con la primera celda vacía, y hay que dejarla pasar.
+      if (columns.every((col) => !col)) continue;
       
-      const firstCol = columns[0].trim();
+      const firstCol = (columns[0] || '').trim();
       
       // Detectar cambios de sección
       if (firstCol.toLowerCase() === 'ingresos') {
@@ -172,7 +178,7 @@ export async function fetchMonthData(gid, monthName) {
           result.totals.incomeExpected = parseSpanishNumber(columns[1]) || 0;
           result.totals.incomeReal = parseSpanishNumber(columns[2]) || 0;
           currentSection = null; // Salir de la sección
-        } else {
+        } else if (firstCol) {
           const name = firstCol;
           const expected = parseSpanishNumber(columns[1]);
           const real = parseSpanishNumber(columns[2]);
@@ -193,7 +199,7 @@ export async function fetchMonthData(gid, monthName) {
           result.totals.expenseExpected = parseSpanishNumber(columns[1]) || 0;
           result.totals.expenseReal = parseSpanishNumber(columns[2]) || 0;
           currentSection = null; // Salir de la sección
-        } else {
+        } else if (firstCol) {
           const name = firstCol;
           const expected = parseSpanishNumber(columns[1]);
           const real = parseSpanishNumber(columns[2]);
