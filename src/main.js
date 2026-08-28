@@ -9,6 +9,7 @@ let activeMonthData = null; // Datos ya parseados del mes en pantalla
 let activeMonthName = '';
 let activeDesgloseTab = 'expenses'; // 'expenses' | 'incomes'
 let isRefreshing = false; // Evita recargas solapadas si se pulsa el botón varias veces
+let loadToken = 0; // Identifica la carga en curso para descartar respuestas obsoletas
 let historicalMonthsCache = {}; // Cache: { 'Sep26': monthData }
 
 // Fallback por defecto indicado por el usuario
@@ -114,17 +115,53 @@ tabPdf.addEventListener('click', () => switchView('pdf'));
  * @param {boolean} isLoading 
  */
 function toggleLoading(isLoading) {
-  if (isLoading) {
-    resumenSkeleton.classList.remove('hidden');
-    resumenContent.classList.add('hidden');
-    statusDot.className = 'status-dot syncing';
-    statusText.textContent = 'Descargando datos...';
-  } else {
-    resumenSkeleton.classList.add('hidden');
-    resumenContent.classList.remove('hidden');
-    statusDot.className = 'status-dot online';
-    statusText.textContent = 'Sincronizado con Google Sheets';
-  }
+  resumenSkeleton.classList.toggle('hidden', !isLoading);
+  resumenContent.classList.toggle('hidden', isLoading);
+  if (isLoading) setStatus('syncing', 'Descargando datos...');
+}
+
+/**
+ * Actualiza el indicador de conexión. Va aparte del skeleton: antes se restablecía
+ * a "Sincronizado" desde el finally de la carga, así que un fallo acababa mostrando
+ * el punto verde y un mensaje de éxito sobre una pantalla sin datos.
+ * @param {'online'|'syncing'|'offline'} state
+ * @param {string} text
+ */
+function setStatus(state, text) {
+  statusDot.className = `status-dot ${state}`;
+  statusText.textContent = text;
+}
+
+/** Hora a la que se descargaron por última vez los datos, para el indicador. */
+function syncedAtLabel() {
+  const time = new Date().toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' });
+  return `Actualizado a las ${time}`;
+}
+
+/**
+ * Construye una fila del desglose. Los textos se asignan con textContent y no con
+ * innerHTML: los conceptos vienen de la hoja de cálculo y un "&" o un "<" en un
+ * concepto rompería el marcado.
+ * @returns {HTMLLIElement}
+ */
+function buildItemRow(name, expectedText, realText, realClass) {
+  const li = document.createElement('li');
+  li.className = 'item-row';
+
+  const cells = [
+    ['item-name', name],
+    ['item-expected', expectedText],
+    [realClass, realText],
+  ];
+
+  cells.forEach(([className, text]) => {
+    const span = document.createElement('span');
+    span.className = className;
+    span.textContent = text;
+    li.appendChild(span);
+  });
+
+  return li;
 }
 
 /**
@@ -148,29 +185,18 @@ function renderDetailsList() {
 
   // Renderizar filas de ítems
   items.forEach(item => {
-    const li = document.createElement('li');
-    li.className = 'item-row';
-    
     const isPending = item.real === null;
-    const realValText = isPending ? 'Pendiente' : formatCurrency(item.real);
-    const realValClass = isPending ? 'item-real empty' : 'item-real filled';
-
-    li.innerHTML = `
-      <span class="item-name">${item.name}</span>
-      <span class="item-expected">${formatCurrency(item.expected)}</span>
-      <span class="${realValClass}">${realValText}</span>
-    `;
-    itemsList.appendChild(li);
+    itemsList.appendChild(buildItemRow(
+      item.name,
+      formatCurrency(item.expected),
+      isPending ? 'Pendiente' : formatCurrency(item.real),
+      isPending ? 'item-real empty' : 'item-real filled'
+    ));
   });
 
   // Renderizar fila de total inferior
-  const totalLi = document.createElement('li');
-  totalLi.className = 'item-row total-row';
-  totalLi.innerHTML = `
-    <span class="item-name">${totalLabel}</span>
-    <span class="item-expected">${formatCurrency(totalExpected)}</span>
-    <span class="item-real filled">${formatCurrency(totalReal)}</span>
-  `;
+  const totalLi = buildItemRow(totalLabel, formatCurrency(totalExpected), formatCurrency(totalReal), 'item-real filled');
+  totalLi.classList.add('total-row');
   itemsList.appendChild(totalLi);
 }
 
@@ -245,24 +271,22 @@ async function loadAndRenderTrends() {
   const startIndex = Math.max(0, activeIdx - 2);
   const trendMonthsRange = availableMonths.slice(startIndex, activeIdx + 1);
 
-  const historicalData = [];
-
-  for (let monthObj of trendMonthsRange) {
+  // En paralelo: son meses independientes y en serie se sumaban las tres esperas.
+  const results = await Promise.all(trendMonthsRange.map(async (monthObj) => {
+    if (historicalMonthsCache[monthObj.name]) {
+      return historicalMonthsCache[monthObj.name];
+    }
     try {
-      if (historicalMonthsCache[monthObj.name]) {
-        historicalData.push(historicalMonthsCache[monthObj.name]);
-      } else {
-        // Cargar en segundo plano
-        const monthData = await fetchMonthData(monthObj.gid, monthObj.name);
-        historicalMonthsCache[monthObj.name] = monthData;
-        historicalData.push(monthData);
-      }
+      const monthData = await fetchMonthData(monthObj.gid, monthObj.name);
+      historicalMonthsCache[monthObj.name] = monthData;
+      return monthData;
     } catch (e) {
       console.warn(`No se pudieron cargar tendencias para el mes ${monthObj.name}:`, e);
+      return null;
     }
-  }
+  }));
 
-  renderTrendsChart('trends-chart', historicalData);
+  renderTrendsChart('trends-chart', results.filter(Boolean));
 }
 
 /**
@@ -276,6 +300,12 @@ async function loadFinancialData(monthName) {
     return;
   }
 
+  // Si se cambia de mes dos veces seguidas, la respuesta más lenta podía llegar la
+  // última y pintar el mes equivocado. Solo el token más reciente puede escribir.
+  loadToken += 1;
+  const token = loadToken;
+  const previousMonthName = activeMonthName;
+
   toggleLoading(true);
   try {
     let monthData;
@@ -285,22 +315,35 @@ async function loadFinancialData(monthName) {
       monthData = await fetchMonthData(selectedSheet.gid, selectedSheet.name);
       historicalMonthsCache[monthName] = monthData;
     }
-    
+
+    if (token !== loadToken) return; // Otra carga posterior manda
+
     activeMonthData = monthData;
     activeMonthName = monthName;
 
     // Poblar paneles e interfaz
     populateSummaryPanel();
-    
+
     // Cargar gráficos de tendencia
     await loadAndRenderTrends();
+
+    if (token !== loadToken) return;
+    setStatus('online', syncedAtLabel());
   } catch (error) {
+    if (token !== loadToken) return;
+
     console.error('Error al cargar la información financiera:', error);
-    statusDot.className = 'status-dot offline';
-    statusText.textContent = 'Error de conexión. Inténtalo de nuevo.';
-    alert('No se pudieron descargar los datos de Google Sheets. Por favor, comprueba tu conexión.');
+    setStatus('offline', 'Error de conexión. Inténtalo de nuevo.');
+
+    // Dejar el selector sobre el mes que sigue en pantalla: si no, el desplegable
+    // muestra un mes y las cifras son las del anterior.
+    if (previousMonthName && previousMonthName !== monthName) {
+      monthSelect.value = previousMonthName;
+    }
+
+    alert(`No se pudieron descargar los datos de ${monthName}: ${error.message}`);
   } finally {
-    toggleLoading(false);
+    if (token === loadToken) toggleLoading(false);
   }
 }
 
@@ -392,21 +435,21 @@ monthSelect.addEventListener('change', (e) => {
 });
 
 // Toggles de desglose (Gastos / Ingresos)
-toggleExpensesBtn.addEventListener('click', () => {
-  if (activeDesgloseTab === 'expenses') return;
-  activeDesgloseTab = 'expenses';
-  toggleExpensesBtn.classList.add('active');
-  toggleIncomesBtn.classList.remove('active');
-  renderDetailsList();
-});
+function setDesgloseTab(tab) {
+  if (activeDesgloseTab === tab) return;
+  activeDesgloseTab = tab;
 
-toggleIncomesBtn.addEventListener('click', () => {
-  if (activeDesgloseTab === 'incomes') return;
-  activeDesgloseTab = 'incomes';
-  toggleIncomesBtn.classList.add('active');
-  toggleExpensesBtn.classList.remove('active');
+  const showingExpenses = tab === 'expenses';
+  toggleExpensesBtn.classList.toggle('active', showingExpenses);
+  toggleIncomesBtn.classList.toggle('active', !showingExpenses);
+  toggleExpensesBtn.setAttribute('aria-pressed', String(showingExpenses));
+  toggleIncomesBtn.setAttribute('aria-pressed', String(!showingExpenses));
+
   renderDetailsList();
-});
+}
+
+toggleExpensesBtn.addEventListener('click', () => setDesgloseTab('expenses'));
+toggleIncomesBtn.addEventListener('click', () => setDesgloseTab('incomes'));
 
 // Exportación a PDF
 downloadPdfBtn.addEventListener('click', async () => {
@@ -433,24 +476,22 @@ downloadPdfBtn.addEventListener('click', async () => {
 
   try {
     const rangeSheets = availableMonths.slice(fromIdx, toIdx + 1);
-    const rangeData = [];
 
-    // Recuperar datos de todos los meses en el rango
-    for (let sheetObj of rangeSheets) {
+    // En paralelo: en serie, un rango de doce meses encadenaba doce esperas seguidas.
+    const rangeData = await Promise.all(rangeSheets.map(async (sheetObj) => {
       if (historicalMonthsCache[sheetObj.name]) {
-        rangeData.push(historicalMonthsCache[sheetObj.name]);
-      } else {
-        const data = await fetchMonthData(sheetObj.gid, sheetObj.name);
-        historicalMonthsCache[sheetObj.name] = data;
-        rangeData.push(data);
+        return historicalMonthsCache[sheetObj.name];
       }
-    }
+      const data = await fetchMonthData(sheetObj.gid, sheetObj.name);
+      historicalMonthsCache[sheetObj.name] = data;
+      return data;
+    }));
 
     // Disparar exportación
     exportMonthsToPDF(rangeData, fromVal, toVal);
   } catch (error) {
     console.error('Error al generar el extracto PDF:', error);
-    alert('Ocurrió un error al descargar los datos del rango seleccionado.');
+    alert(`No se pudo generar el extracto: ${error.message}`);
   } finally {
     // Restaurar estado del botón
     downloadPdfBtn.disabled = false;
@@ -479,12 +520,13 @@ async function init() {
     const currentCode = getCurrentMonthCode();
     const hasCurrentMonth = availableMonths.some(m => m.name === currentCode);
     
-    // Por directiva del usuario, si el mes actual no está disponible, abrir Sep26
+    // Si el mes actual no tiene pestaña, abrir Sep26; y si tampoco existe, el más reciente.
     if (hasCurrentMonth) {
       activeMonthName = currentCode;
+    } else if (availableMonths.some(m => m.name === DEFAULT_FALLBACK_MONTH)) {
+      activeMonthName = DEFAULT_FALLBACK_MONTH;
     } else {
-      const hasSep26 = availableMonths.some(m => m.name === DEFAULT_FALLBACK_MONTH);
-      activeMonthName = hasSep26 ? DEFAULT_FALLBACK_MONTH : availableMonths[0].name;
+      activeMonthName = availableMonths[availableMonths.length - 1].name;
     }
 
     // Configurar selectores
@@ -497,11 +539,9 @@ async function init() {
 
   } catch (error) {
     console.error('Fallo en la inicialización:', error);
-    statusDot.className = 'status-dot offline';
-    statusText.textContent = 'Error al conectar con la hoja de cálculo.';
-    alert(`Error al inicializar BaeCount: ${error.message}`);
-  } finally {
+    setStatus('offline', 'Error al conectar con la hoja de cálculo.');
     toggleLoading(false);
+    alert(`Error al inicializar BaeCount: ${error.message}`);
   }
 }
 

@@ -2,7 +2,7 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>BaeCount - Finanzas Compartidas</title>
     
     <!-- Meta tags para SEO y PWA -->
@@ -57,17 +57,17 @@
       <main class="app-content">
         
         <!-- VISTA 1: RESUMEN FINANCIERO -->
-        <section id="resumen-view" class="view-pane active">
+        <section id="resumen-view" class="view-pane active" role="tabpanel" aria-labelledby="tab-resumen">
           
           <!-- Cargador (Skeleton Screen) -->
-          <div id="resumen-skeleton" class="skeleton-container hidden">
+          <div id="resumen-skeleton" class="skeleton-container">
             <div class="skeleton-card skeleton-balance"></div>
             <div class="skeleton-card skeleton-aportaciones"></div>
             <div class="skeleton-card skeleton-list"></div>
           </div>
           
           <!-- Contenido del Resumen -->
-          <div id="resumen-content">
+          <div id="resumen-content" class="hidden">
             
             <!-- Tarjeta de Balance General -->
             <div class="card balance-card">
@@ -148,8 +148,8 @@
 
             <!-- Selector de Desglose (Ingresos / Gastos) -->
             <div class="desglose-toggle-container">
-              <button id="toggle-expenses-btn" class="toggle-btn active">Gastos</button>
-              <button id="toggle-incomes-btn" class="toggle-btn">Ingresos</button>
+              <button id="toggle-expenses-btn" class="toggle-btn active" type="button" aria-pressed="true">Gastos</button>
+              <button id="toggle-incomes-btn" class="toggle-btn" type="button" aria-pressed="false">Ingresos</button>
             </div>
 
             <!-- Listado Detallado de Items -->
@@ -176,7 +176,7 @@
         </section>
 
         <!-- VISTA 2: DESCARGA DE PDF -->
-        <section id="pdf-view" class="view-pane">
+        <section id="pdf-view" class="view-pane" role="tabpanel" aria-labelledby="tab-pdf">
           <div class="card pdf-card">
             <div class="pdf-icon-wrapper">
               <svg xmlns="http://www.w3.org/2000/svg" class="pdf-hero-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -218,8 +218,8 @@
       </main>
 
       <!-- Navegación Inferior (Tabs) -->
-      <nav class="bottom-nav">
-        <button id="tab-resumen" class="nav-item active" aria-label="Ver resumen de gastos e ingresos" aria-selected="true">
+      <nav class="bottom-nav" role="tablist" aria-label="Secciones de la aplicación">
+        <button id="tab-resumen" class="nav-item active" type="button" role="tab" aria-controls="resumen-view" aria-label="Ver resumen de gastos e ingresos" aria-selected="true">
           <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <line x1="18" y1="20" x2="18" y2="10"/>
             <line x1="12" y1="20" x2="12" y2="4"/>
@@ -227,7 +227,7 @@
           </svg>
           <span class="nav-text">Resumen</span>
         </button>
-        <button id="tab-pdf" class="nav-item" aria-label="Exportar datos financieros a PDF" aria-selected="false">
+        <button id="tab-pdf" class="nav-item" type="button" role="tab" aria-controls="pdf-view" aria-label="Exportar datos financieros a PDF" aria-selected="false">
           <svg xmlns="http://www.w3.org/2000/svg" class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
             <polyline points="7 10 12 15 17 10"/>

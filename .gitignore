@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Artefacto de empaquetado, no forma parte del código fuente
+*.zip

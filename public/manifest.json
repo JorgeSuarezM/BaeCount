@@ -2,17 +2,19 @@
   "name": "BaeCount",
   "short_name": "BaeCount",
   "description": "Organiza los gastos mensuales con tu pareja de forma proporcional.",
-  "start_url": "./index.html",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#090510",
   "theme_color": "#8b5cf6",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "./baecount_icon.png",
+      "src": "/baecount_icon.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
-  ]
+  ],
+  "id": "/",
+  "scope": "/"
 }

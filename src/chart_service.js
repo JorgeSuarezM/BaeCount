@@ -14,6 +14,7 @@ export function renderTrendsChart(canvasId, historicalData) {
   // Destruir gráfico activo si ya existe para evitar fugas de memoria o solapamiento
   if (activeChartInstance) {
     activeChartInstance.destroy();
+    activeChartInstance = null; // Si no, la siguiente llamada destruye un gráfico ya destruido
   }
 
   // Si no hay datos históricos suficientes, ocultar o mostrar vacío
@@ -133,7 +134,10 @@ export function renderTrendsChart(canvasId, historicalData) {
           displayColors: true,
           callbacks: {
             label: function(context) {
-              return ` ${context.dataset.label.split(' ')[0]}: ${context.raw.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`;
+              // Quitar solo el sufijo " (€)": partir por espacios dejaba "Gasto"
+              // como etiqueta tanto del gasto real como del previsto.
+              const name = context.dataset.label.replace(/\s*\(€\)$/, '');
+              return ` ${name}: ${context.raw.toLocaleString('es-ES', { minimumFractionDigits: 2 })} €`;
             }
           }
         }

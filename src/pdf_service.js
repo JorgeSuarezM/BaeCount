@@ -38,6 +38,10 @@ function formatMonthName(monthStr) {
  * @param {string} toMonthName Mes de fin
  */
 export function exportMonthsToPDF(monthsData, fromMonthName, toMonthName) {
+  if (!monthsData || monthsData.length === 0) {
+    throw new Error('No hay datos que exportar en el periodo seleccionado.');
+  }
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -97,8 +101,10 @@ export function exportMonthsToPDF(monthsData, fromMonthName, toMonthName) {
     cursorY = 34;
   }
 
-  // Helper para dibujar pie de página
-  function drawFooter(pageNum, totalPages) {
+  // Helper para dibujar el pie. La numeración se estampa al final, cuando ya se
+  // sabe cuántas páginas han salido: los meses largos generan continuaciones y
+  // antes todas repetían el número de la primera.
+  function drawFooter() {
     doc.setDrawColor(...COLOR_BORDER);
     doc.setLineWidth(0.2);
     doc.line(marginX, pageHeight - 15, pageWidth - marginX, pageHeight - 15);
@@ -107,7 +113,98 @@ export function exportMonthsToPDF(monthsData, fromMonthName, toMonthName) {
     doc.setFontSize(8);
     doc.setTextColor(...COLOR_TEXT_MUTED);
     doc.text('BaeCount - Extracto financiero de consulta', marginX, pageHeight - 10);
-    doc.text(`Página ${pageNum} de ${totalPages}`, pageWidth - marginX, pageHeight - 10, { align: 'right' });
+  }
+
+  /** Escribe "Página X de Y" en todas las páginas, ya con el total definitivo. */
+  function stampPageNumbers() {
+    const totalPages = doc.internal.getNumberOfPages();
+    for (let page = 1; page <= totalPages; page += 1) {
+      doc.setPage(page);
+      doc.setFont('Helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...COLOR_TEXT_MUTED);
+      doc.text(`Página ${page} de ${totalPages}`, pageWidth - marginX, pageHeight - 10, { align: 'right' });
+    }
+  }
+
+  /**
+   * Dibuja una tabla de conceptos (previsto / real) con su fila de total.
+   * Se usa para gastos y para ingresos, que antes no salían en el PDF.
+   * @returns {number} La Y donde continuar
+   */
+  function drawItemsTable(title, items, totalLabel, totalExpected, totalReal, startY, monthName) {
+    let y = startY;
+
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.setTextColor(...COLOR_PRIMARY);
+    doc.text(title, marginX, y);
+    y += 6;
+
+    const drawTableHeader = () => {
+      doc.setFillColor(...COLOR_PRIMARY);
+      doc.rect(marginX, y, pageWidth - (marginX * 2), 6, 'F');
+      doc.setFont('Helvetica', 'bold');
+      doc.setFontSize(8);
+      doc.setTextColor(255, 255, 255);
+      doc.text('Concepto', marginX + 4, y + 4);
+      doc.text('Previsto (EUR)', pageWidth / 2 + 15, y + 4, { align: 'right' });
+      doc.text('Real (EUR)', pageWidth - marginX - 4, y + 4, { align: 'right' });
+      y += 6;
+    };
+
+    drawTableHeader();
+
+    items.forEach((item, idx) => {
+      // Si la fila se sale del margen inferior, seguimos en otra página
+      if (y > pageHeight - 30) {
+        drawFooter();
+        doc.addPage();
+        drawHeader(`Periodo: ${formatMonthName(monthName)} (Continuación)`);
+        y = cursorY;
+        drawTableHeader();
+      }
+
+      if (idx % 2 === 0) {
+        doc.setFillColor(...COLOR_BG_LIGHT);
+        doc.rect(marginX, y, pageWidth - (marginX * 2), 6, 'F');
+      }
+
+      doc.setFont('Helvetica', 'normal');
+      doc.setTextColor(...COLOR_TEXT_DARK);
+      doc.setFontSize(8.5);
+      doc.text(item.name, marginX + 4, y + 4.5);
+      doc.text(formatPDFCurrency(item.expected), pageWidth / 2 + 15, y + 4.5, { align: 'right' });
+
+      const realText = item.real === null ? 'Pendiente' : formatPDFCurrency(item.real);
+      doc.setFont('Helvetica', item.real === null ? 'italic' : 'normal');
+      doc.text(realText, pageWidth - marginX - 4, y + 4.5, { align: 'right' });
+      doc.setFont('Helvetica', 'normal');
+
+      doc.setDrawColor(...COLOR_BORDER);
+      doc.setLineWidth(0.1);
+      doc.line(marginX, y + 6, pageWidth - marginX, y + 6);
+
+      y += 6;
+    });
+
+    if (y > pageHeight - 25) {
+      drawFooter();
+      doc.addPage();
+      drawHeader(`Periodo: ${formatMonthName(monthName)} (Continuación)`);
+      y = cursorY;
+    }
+
+    doc.setFillColor(240, 235, 248);
+    doc.rect(marginX, y, pageWidth - (marginX * 2), 7, 'F');
+    doc.setFont('Helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...COLOR_PRIMARY);
+    doc.text(totalLabel, marginX + 4, y + 5);
+    doc.text(formatPDFCurrency(totalExpected), pageWidth / 2 + 15, y + 5, { align: 'right' });
+    doc.text(formatPDFCurrency(totalReal), pageWidth - marginX - 4, y + 5, { align: 'right' });
+
+    return y + 13;
   }
 
   const isMultiMonth = monthsData.length > 1;
@@ -225,16 +322,12 @@ export function exportMonthsToPDF(monthsData, fromMonthName, toMonthName) {
       rowY += 7;
     });
 
-    drawFooter(1, monthsData.length + 1);
+    drawFooter();
     doc.addPage();
   }
 
   // --- DETALLE MES A MES ---
   monthsData.forEach((month, index) => {
-    cursorY = 34;
-    const pageNum = isMultiMonth ? index + 2 : 1;
-    const totalPages = isMultiMonth ? monthsData.length + 1 : 1;
-
     drawHeader(`Periodo: ${formatMonthName(month.month)}`);
 
     // --- SECCIÓN APORTACIONES Y SALARIOS ---
@@ -246,7 +339,7 @@ export function exportMonthsToPDF(monthsData, fromMonthName, toMonthName) {
 
     // Dibujar tarjetas de integrantes Jorge / José
     const colWidth = (pageWidth - (marginX * 2) - 8) / 2;
-    
+
     // Jorge Card
     doc.setFillColor(...COLOR_BG_LIGHT);
     doc.setDrawColor(...COLOR_BORDER);
@@ -286,87 +379,43 @@ export function exportMonthsToPDF(monthsData, fromMonthName, toMonthName) {
     doc.setTextColor(...COLOR_TEXT_MUTED);
     doc.text(`Previsto: ${formatPDFCurrency(month.contributions.joseExpected)}`, marginX + (colWidth * 2) + 8 - 4, cursorY + 18, { align: 'right' });
 
-    cursorY += 34;
+    let rowY = cursorY + 34;
 
-    // --- TABLA DETALLADA DE GASTOS ---
-    doc.setFont('Helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.setTextColor(...COLOR_PRIMARY);
-    doc.text('Desglose de Gastos', marginX, cursorY);
-    cursorY += 6;
+    // Desglose de ingresos: la app permite consultarlos en pantalla, pero el PDF
+    // solo sacaba los gastos y el extracto quedaba a medias.
+    rowY = drawItemsTable(
+      'Desglose de Ingresos',
+      month.incomes,
+      'TOTAL INGRESOS',
+      month.totals.incomeExpected,
+      month.totals.incomeReal,
+      rowY,
+      month.month
+    );
 
-    // Cabecera Tabla Gastos
-    const tableHeaderY = cursorY;
-    doc.setFillColor(...COLOR_PRIMARY);
-    doc.rect(marginX, tableHeaderY, pageWidth - (marginX * 2), 6, 'F');
-    doc.setFont('Helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(255, 255, 255);
-    doc.text('Concepto', marginX + 4, tableHeaderY + 4);
-    doc.text('Previsto (€)', pageWidth / 2 + 15, tableHeaderY + 4, { align: 'right' });
-    doc.text('Real (€)', pageWidth - marginX - 4, tableHeaderY + 4, { align: 'right' });
-
-    let rowY = tableHeaderY + 6;
-    doc.setFont('Helvetica', 'normal');
-    doc.setTextColor(...COLOR_TEXT_DARK);
-
-    // Iterar gastos
-    month.expenses.forEach((item, idx) => {
-      // Si la fila va a salirse del margen inferior de la página, creamos otra página
-      if (rowY > pageHeight - 30) {
-        drawFooter(pageNum, totalPages);
-        doc.addPage();
-        drawHeader(`Periodo: ${formatMonthName(month.month)} (Continuación)`);
-        rowY = 38;
-      }
-
-      if (idx % 2 === 0) {
-        doc.setFillColor(...COLOR_BG_LIGHT);
-        doc.rect(marginX, rowY, pageWidth - (marginX * 2), 6, 'F');
-      }
-
-      doc.setFontSize(8.5);
-      doc.text(item.name, marginX + 4, rowY + 4.5);
-      doc.text(formatPDFCurrency(item.expected), pageWidth / 2 + 15, rowY + 4.5, { align: 'right' });
-      
-      const realText = item.real === null ? 'Pendiente' : formatPDFCurrency(item.real);
-      doc.setFont('Helvetica', item.real === null ? 'italic' : 'normal');
-      doc.text(realText, pageWidth - marginX - 4, rowY + 4.5, { align: 'right' });
-      doc.setFont('Helvetica', 'normal');
-
-      // Línea inferior celda
-      doc.setDrawColor(...COLOR_BORDER);
-      doc.setLineWidth(0.1);
-      doc.line(marginX, rowY + 6, pageWidth - marginX, rowY + 6);
-
-      rowY += 6;
-    });
-
-    // Fila del TOTAL Gastos
-    if (rowY > pageHeight - 25) {
-      drawFooter(pageNum, totalPages);
+    if (rowY > pageHeight - 60) {
+      drawFooter();
       doc.addPage();
       drawHeader(`Periodo: ${formatMonthName(month.month)} (Continuación)`);
-      rowY = 38;
+      rowY = cursorY;
     }
 
-    doc.setFillColor(240, 235, 248);
-    doc.rect(marginX, rowY, pageWidth - (marginX * 2), 7, 'F');
-    doc.setFont('Helvetica', 'bold');
-    doc.setFontSize(9);
-    doc.setTextColor(...COLOR_PRIMARY);
-    doc.text('TOTAL GASTOS', marginX + 4, rowY + 5);
-    doc.text(formatPDFCurrency(month.totals.expenseExpected), pageWidth / 2 + 15, rowY + 5, { align: 'right' });
-    doc.text(formatPDFCurrency(month.totals.expenseReal), pageWidth - marginX - 4, rowY + 5, { align: 'right' });
-    
-    rowY += 13;
+    rowY = drawItemsTable(
+      'Desglose de Gastos',
+      month.expenses,
+      'TOTAL GASTOS',
+      month.totals.expenseExpected,
+      month.totals.expenseReal,
+      rowY,
+      month.month
+    );
 
     // --- RESUMEN FINAL DE BALANCE MENSUAL ---
     if (rowY > pageHeight - 30) {
-      drawFooter(pageNum, totalPages);
+      drawFooter();
       doc.addPage();
-      drawHeader(`Periodo: ${formatMonthName(month.month)}`);
-      rowY = 38;
+      drawHeader(`Periodo: ${formatMonthName(month.month)} (Continuación)`);
+      rowY = cursorY;
     }
 
     doc.setFont('Helvetica', 'bold');
@@ -389,19 +438,22 @@ export function exportMonthsToPDF(monthsData, fromMonthName, toMonthName) {
     doc.text(formatPDFCurrency(month.balance.expected), marginX + 45, rowY + 2);
 
     doc.setFont('Helvetica', 'normal');
+    doc.setTextColor(...COLOR_TEXT_DARK);
     doc.text('Ahorro Real:', pageWidth / 2 + 10, rowY + 2);
     doc.setFont('Helvetica', 'bold');
     const savingColor = month.balance.real >= 0 ? [16, 185, 129] : [244, 63, 94];
     doc.setTextColor(...savingColor);
     doc.text(formatPDFCurrency(month.balance.real), pageWidth / 2 + 35, rowY + 2);
 
-    drawFooter(pageNum, totalPages);
+    drawFooter();
 
     // Añadir página si no es el último elemento
     if (index < monthsData.length - 1) {
       doc.addPage();
     }
   });
+
+  stampPageNumbers();
 
   // Guardar y descargar el PDF
   const filename = isMultiMonth 
