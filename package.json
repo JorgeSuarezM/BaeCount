@@ -14,5 +14,8 @@
   "dependencies": {
     "chart.js": "^4.5.1",
     "jspdf": "^4.2.1"
+  },
+  "engines": {
+    "node": "22.x"
   }
 }
