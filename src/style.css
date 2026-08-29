@@ -39,7 +39,7 @@
   --desktop-content-max: 1500px;
 
   /* Nav y Barra Inferior */
-  --nav-bg: rgba(18, 9, 31, 0.85);
+  --nav-bg: #12091f;
   --nav-border: rgba(139, 92, 246, 0.12);
 
   /* Jorge & José Avatars */
@@ -57,12 +57,12 @@
 
 html, body {
   width: 100%;
-  height: 100%;
+  min-height: 100%;
   background-color: #090510;
   background-image: var(--bg-app-gradient);
+  background-attachment: fixed;
   color: var(--text-white);
   font-family: var(--font-body);
-  overflow: hidden;
   font-size: 16px;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -72,7 +72,7 @@ html, body {
 .app-container {
   width: 100%;
   max-width: 480px;
-  height: 100dvh;
+  min-height: 100dvh;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -87,9 +87,10 @@ html, body {
    Header y Barra de Estado
    ========================================================================== */
 .app-header {
+  position: sticky;
+  top: 0;
   padding: 16px 20px 12px;
-  background: rgba(9, 5, 16, 0.6);
-  backdrop-filter: blur(10px);
+  background: #0c0719;
   border-bottom: 1px solid rgba(139, 92, 246, 0.1);
   flex-shrink: 0;
   z-index: 10;
@@ -251,65 +252,14 @@ html, body {
 }
 
 /* ==========================================================================
-   Contenido Principal e Interfaz de Paneles (Scroll)
+   Contenido Principal e Interfaz de Paneles
    ========================================================================== */
 .app-content {
   flex: 1;
-  overflow-y: auto;
-  overscroll-behavior-y: contain; /* El gesto de tirar lo gestionamos nosotros */
   padding: 16px 20px 90px; /* Padding extra para no solapar con bottom-nav */
   position: relative;
 }
 
-/* ==========================================================================
-   Tirar para actualizar (solo táctil)
-   ========================================================================== */
-.ptr {
-  position: absolute;
-  top: 6px;
-  left: 50%;
-  transform: translate(-50%, 0);
-  width: 34px;
-  height: 34px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  background: var(--card-bg);
-  border: 1px solid var(--card-border);
-  backdrop-filter: blur(8px);
-  color: var(--text-lavender);
-  opacity: 0;
-  pointer-events: none;
-  z-index: 5;
-}
-
-.ptr-arrow {
-  width: 17px;
-  height: 17px;
-}
-
-/* Ya se puede soltar */
-.ptr.is-ready {
-  color: var(--accent-violet-light);
-  border-color: var(--card-border-active);
-  box-shadow: var(--accent-glow);
-}
-
-/* Descargando: la flecha deja de seguir al dedo y gira sola */
-.ptr.is-refreshing {
-  color: var(--accent-violet-light);
-  border-color: var(--card-border-active);
-}
-
-.ptr.is-refreshing .ptr-arrow {
-  animation: spin 0.8s linear infinite;
-  transition: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ptr.is-refreshing .ptr-arrow { animation-duration: 2s; }
-}
 
 /* Estilo de Tarjeta Base */
 .card {
@@ -920,8 +870,6 @@ html, body {
   max-width: 480px;
   height: 72px;
   background: var(--nav-bg);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
   border-top: 1px solid var(--nav-border);
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1041,25 +989,15 @@ html, body {
 
 /* ==========================================================================
    ESCRITORIO (>= 1024px)
-   La versión móvil es una app de columna única con el scroll dentro de
-   .app-content y la navegación abajo. En escritorio eso deja una franja
-   estrecha centrada y una rueda de ratón que no mueve la página, así que
-   aquí se cambia el modelo: scroll del documento, ancho completo,
-   navegación lateral fija y el contenido repartido en dos columnas.
+   La versión móvil es una columna única con la navegación abajo. En escritorio
+   eso deja una franja estrecha centrada, así que aquí se ensancha a dos columnas
+   y la barra inferior pasa a ser una navegación lateral fija. El scroll es el del
+   documento en ambos casos.
    ========================================================================== */
 @media (min-width: 1024px) {
-  /* El scroll pasa a ser el del documento */
-  html,
-  body {
-    overflow: visible;
-    height: auto;
-  }
-
   .app-container {
     max-width: none;
     width: 100%;
-    height: auto;
-    min-height: 100dvh;
     padding-left: var(--desktop-nav-width);
     border-left: none;
     border-right: none;
@@ -1114,10 +1052,9 @@ html, body {
     height: 17px;
   }
 
-  /* --- Contenido: sin scroll propio, centrado y ancho --- */
+  /* --- Contenido: centrado y ancho --- */
   .app-content {
     flex: none;
-    overflow: visible;
     padding: 28px 40px 48px;
     max-width: var(--desktop-content-max);
     margin: 0 auto;

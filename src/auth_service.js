@@ -116,8 +116,11 @@ export async function signIn(buttonContainer) {
           pendingResolve = null;
           if (resolveNow) resolveNow(currentEmail);
         },
-        // Sin selección automática: al cerrar sesión conviene poder elegir otra cuenta.
-        auto_select: false,
+        // Reentrada automática: el gesto de tirar para actualizar recarga la página
+        // entera, y sin esto habría que pulsar el botón de Google en cada refresco.
+        // Al cerrar sesión se desactiva (disableAutoSelect), así que sigue siendo
+        // posible entrar con otra cuenta.
+        auto_select: true,
         cancel_on_tap_outside: true,
       });
       initialized = true;
@@ -133,5 +136,9 @@ export async function signIn(buttonContainer) {
       logo_alignment: 'left',
       locale: 'es',
     });
+
+    // Intenta reanudar la sesión sin intervención. Si no hay ninguna que reanudar,
+    // no ocurre nada y el usuario usa el botón que acabamos de dibujar.
+    window.google.accounts.id.prompt();
   });
 }

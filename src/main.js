@@ -3,7 +3,6 @@ import { fetchAvailableMonths, fetchMonthData } from './sheet_service.js';
 import { renderTrendsChart } from './chart_service.js';
 import { exportMonthsToPDF } from './pdf_service.js';
 import { signIn, clearSession, setSessionLostHandler, getCurrentEmail } from './auth_service.js';
-import { enablePullToRefresh } from './pull_to_refresh.js';
 
 // --- CONFIGURACIÓN Y ESTADO DE LA APP ---
 let availableMonths = []; // Array de {name}
@@ -27,8 +26,6 @@ const statusDot = document.getElementById('status-indicator-dot');
 const statusText = document.getElementById('status-text');
 const refreshBtn = document.getElementById('refresh-btn');
 const signoutBtn = document.getElementById('signout-btn');
-
-const pullIndicator = document.getElementById('pull-indicator');
 
 const appContainer = document.getElementById('app');
 const loginScreen = document.getElementById('login-screen');
@@ -119,8 +116,15 @@ function switchView(targetView) {
 }
 
 // --- EVENT LISTENERS NAVEGACIÓN ---
-tabResumen.addEventListener('click', () => switchView('resumen'));
-tabPdf.addEventListener('click', () => switchView('pdf'));
+// Al cambiar de pestaña se vuelve arriba: ahora quien se desplaza es el documento y,
+// si no, la vista nueva aparecía a la altura a la que se había quedado la anterior.
+function goToView(name) {
+  switchView(name);
+  window.scrollTo({ top: 0, behavior: 'auto' });
+}
+
+tabResumen.addEventListener('click', () => goToView('resumen'));
+tabPdf.addEventListener('click', () => goToView('pdf'));
 
 // --- RENDERIZADO DE LA INTERFAZ ---
 
@@ -451,14 +455,6 @@ async function refreshData({ silent = false } = {}) {
 // Botón de actualización manual
 refreshBtn.addEventListener('click', () => refreshData());
 
-// Y el mismo refresco tirando hacia abajo desde arriba del todo, en móvil
-enablePullToRefresh({
-  container: document.querySelector('.app-content'),
-  indicator: pullIndicator,
-  onRefresh: () => refreshData({ silent: true }),
-  // Sin sesión no hay nada que recargar
-  enabled: () => !appContainer.classList.contains('hidden') && !isRefreshing,
-});
 
 // Selector de mes en cabecera
 monthSelect.addEventListener('change', (e) => {
