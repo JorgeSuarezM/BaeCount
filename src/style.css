@@ -1275,8 +1275,3 @@ html, body {
   font-size: 0.8rem;
   line-height: 1.45;
 }
-
-.login-note {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
