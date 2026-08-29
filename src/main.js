@@ -2,7 +2,7 @@ import './style.css';
 import { fetchAvailableMonths, fetchMonthData } from './sheet_service.js';
 import { renderTrendsChart } from './chart_service.js';
 import { exportMonthsToPDF } from './pdf_service.js';
-import { signIn, clearSession, setSessionLostHandler, getCurrentEmail } from './auth_service.js';
+import { signIn, restoreSession, clearSession, setSessionLostHandler, getCurrentEmail } from './auth_service.js';
 
 // --- CONFIGURACIÓN Y ESTADO DE LA APP ---
 let availableMonths = []; // Array de {name}
@@ -616,12 +616,31 @@ async function startSession(message) {
     return;
   }
 
+  await enterApp();
+}
+
+/** Pasa a la app con la sesión ya abierta. */
+async function enterApp() {
   showApp();
 
   const email = getCurrentEmail();
   if (email) signoutBtn.title = `Cerrar sesión (${email})`;
 
   await init();
+}
+
+/**
+ * Arranque: si la cookie de sesión sigue viva (dura 24 horas) se entra directamente,
+ * sin pasar por el botón de Google. Es lo que hace que reabrir la web o la PWA no
+ * obligue a iniciar sesión otra vez.
+ */
+async function bootstrap() {
+  if (await restoreSession()) {
+    await enterApp();
+    return;
+  }
+
+  await startSession();
 }
 
 // El servidor manda: si rechaza el token o el correo, se vuelve al login.
@@ -634,7 +653,7 @@ signoutBtn.addEventListener('click', () => {
 });
 
 // Ejecutar al cargar la página
-window.addEventListener('DOMContentLoaded', () => startSession());
+window.addEventListener('DOMContentLoaded', () => bootstrap());
 
 // Al volver atrás/adelante (o al reabrir la PWA) el navegador puede restaurar la página
 // desde la bfcache sin lanzar DOMContentLoaded. En ese caso los datos en pantalla son

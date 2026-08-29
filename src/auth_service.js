@@ -2,23 +2,24 @@
  * Inicio de sesión con Google en el navegador.
  *
  * Usa Google Identity Services: el botón devuelve un ID token (un JWT firmado por
- * Google) que se guarda solo en memoria y se manda en cada petición a /api. Quién
- * puede entrar de verdad lo decide el servidor comparando el correo del token con
- * la lista blanca; aquí no se toma ninguna decisión de seguridad.
+ * Google) que se manda una sola vez a /api/session. El servidor lo valida, comprueba
+ * la lista blanca de correos y responde con una cookie de sesión HttpOnly que dura 24
+ * horas. A partir de ahí el navegador la reenvía sola en cada petición a /api, así que
+ * la app no guarda ningún token: cerrar la pestaña o la PWA ya no pierde la sesión.
  *
- * El token dura una hora. Cuando caduca, el servidor responde 401 y la app vuelve a
- * pedir el inicio de sesión.
+ * Quién puede entrar de verdad lo decide el servidor; aquí no se toma ninguna decisión
+ * de seguridad.
  */
 
 const GSI_SRC = 'https://accounts.google.com/gsi/client';
+const SESSION_URL = '/api/session';
 
-let idToken = null;
 let currentEmail = null;
 let onSessionLost = null;
 let initialized = false;
-// Resolver de la espera de login en curso: el callback de Google es único para toda
+// Resolvers de la espera de login en curso: el callback de Google es único para toda
 // la página, así que se guarda aquí a quién hay que avisar cuando llegue el token.
-let pendingResolve = null;
+let pending = null;
 
 /** Carga el script de Google una sola vez. */
 function loadGoogleScript() {
@@ -42,27 +43,6 @@ function loadGoogleScript() {
   });
 }
 
-/** Lee el payload de un JWT sin verificarlo: solo para mostrar el correo en la interfaz. */
-function readTokenPayload(token) {
-  try {
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    const json = decodeURIComponent(
-      atob(base64)
-        .split('')
-        .map((c) => `%${`00${c.charCodeAt(0).toString(16)}`.slice(-2)}`)
-        .join('')
-    );
-    return JSON.parse(json);
-  } catch {
-    return {};
-  }
-}
-
-/** ID token actual, o null si no hay sesión. */
-export function getIdToken() {
-  return idToken;
-}
-
 /** Correo con el que se ha iniciado sesión, para mostrarlo en la interfaz. */
 export function getCurrentEmail() {
   return currentEmail;
@@ -77,12 +57,54 @@ export function setSessionLostHandler(handler) {
   onSessionLost = handler;
 }
 
+/**
+ * Recupera la sesión guardada en la cookie, si sigue viva.
+ * @returns {Promise<string|null>} El correo, o null si hay que iniciar sesión
+ */
+export async function restoreSession() {
+  try {
+    const response = await fetch(SESSION_URL, { method: 'GET', cache: 'no-store' });
+    if (!response.ok) return null;
+
+    const { email } = await response.json();
+    currentEmail = email || null;
+    return currentEmail;
+  } catch {
+    // Sin red no se puede confirmar la sesión: se pasa por el login como siempre.
+    return null;
+  }
+}
+
 /** Descarta la sesión en curso y avisa a la app. */
 export function clearSession(reason) {
-  idToken = null;
   currentEmail = null;
+
+  // Que el servidor borre la cookie. No merece la pena esperar: la app ya vuelve al
+  // login, y si la petición falla la cookie caduca sola.
+  fetch(SESSION_URL, { method: 'DELETE', cache: 'no-store' }).catch(() => {});
+
+  // Sin esto, el reingreso automático de Google volvería a entrar solo.
   window.google?.accounts?.id?.disableAutoSelect();
+
   if (onSessionLost) onSessionLost(reason);
+}
+
+/** Cambia el ID token de Google por la cookie de sesión del servidor. */
+async function openSession(credential) {
+  const response = await fetch(SESSION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    body: JSON.stringify({ credential }),
+  });
+
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    throw new Error(detail.error || 'No se pudo abrir la sesión.');
+  }
+
+  const { email } = await response.json();
+  return email || null;
 }
 
 /**
@@ -100,26 +122,29 @@ export async function signIn(buttonContainer) {
 
   await loadGoogleScript();
 
-  return new Promise((resolve) => {
-    pendingResolve = resolve;
+  return new Promise((resolve, reject) => {
+    pending = { resolve, reject };
 
     // initialize() solo debe llamarse una vez por página; en los reintentos basta
     // con volver a dibujar el botón.
     if (!initialized) {
       window.google.accounts.id.initialize({
         client_id: clientId,
-        callback: (credentialResponse) => {
-          idToken = credentialResponse.credential;
-          currentEmail = readTokenPayload(idToken).email || null;
+        callback: async (credentialResponse) => {
+          const waiting = pending;
+          pending = null;
+          if (!waiting) return;
 
-          const resolveNow = pendingResolve;
-          pendingResolve = null;
-          if (resolveNow) resolveNow(currentEmail);
+          try {
+            currentEmail = await openSession(credentialResponse.credential);
+            waiting.resolve(currentEmail);
+          } catch (error) {
+            waiting.reject(error);
+          }
         },
-        // Reentrada automática: el gesto de tirar para actualizar recarga la página
-        // entera, y sin esto habría que pulsar el botón de Google en cada refresco.
-        // Al cerrar sesión se desactiva (disableAutoSelect), así que sigue siendo
-        // posible entrar con otra cuenta.
+        // Reentrada automática: si la cookie ha caducado (24 h) y la sesión de Google
+        // sigue viva, se vuelve a entrar sin tocar nada. Al cerrar sesión se desactiva
+        // (disableAutoSelect), así que sigue siendo posible entrar con otra cuenta.
         auto_select: true,
         cancel_on_tap_outside: true,
       });

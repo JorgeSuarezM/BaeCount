@@ -3,13 +3,13 @@
  *
  * Las peticiones van a /api/sheets, una función serverless que consulta la API de
  * Google con una cuenta de servicio. La hoja ya no está publicada en la web, así que
- * todo pasa por ahí y cada llamada viaja firmada con el ID token de la sesión.
+ * todo pasa por ahí y el navegador adjunta solo la cookie de sesión.
  *
  * En desarrollo hace falta `vercel dev` (con las variables de entorno configuradas)
  * para que /api exista; con `npm run dev` a secas esa ruta no está servida.
  */
 
-import { getIdToken, clearSession } from './auth_service.js';
+import { clearSession } from './auth_service.js';
 
 const API_URL = '/api/sheets';
 
@@ -36,22 +36,15 @@ function monthSortKey(name) {
 }
 
 /**
- * Llama a /api/sheets con el token de la sesión.
+ * Llama a /api/sheets. La sesión viaja en la cookie que emitió el servidor, así que
+ * aquí no hay ningún token que adjuntar.
  * Si el servidor rechaza la sesión, se cierra para que la app vuelva al login.
  * @param {Record<string, string>} params
  * @returns {Promise<Object>}
  */
 async function callApi(params) {
-  const token = getIdToken();
-  if (!token) {
-    throw new Error('No hay sesión iniciada.');
-  }
-
   const query = new URLSearchParams({ ...params, t: String(Date.now()) });
-  const response = await fetch(`${API_URL}?${query}`, {
-    cache: 'no-store',
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await fetch(`${API_URL}?${query}`, { cache: 'no-store' });
 
   if (!response.ok) {
     const detail = await response.json().catch(() => ({}));
