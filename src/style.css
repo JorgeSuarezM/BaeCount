@@ -256,8 +256,59 @@ html, body {
 .app-content {
   flex: 1;
   overflow-y: auto;
+  overscroll-behavior-y: contain; /* El gesto de tirar lo gestionamos nosotros */
   padding: 16px 20px 90px; /* Padding extra para no solapar con bottom-nav */
   position: relative;
+}
+
+/* ==========================================================================
+   Tirar para actualizar (solo táctil)
+   ========================================================================== */
+.ptr {
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  transform: translate(-50%, 0);
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  backdrop-filter: blur(8px);
+  color: var(--text-lavender);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.ptr-arrow {
+  width: 17px;
+  height: 17px;
+}
+
+/* Ya se puede soltar */
+.ptr.is-ready {
+  color: var(--accent-violet-light);
+  border-color: var(--card-border-active);
+  box-shadow: var(--accent-glow);
+}
+
+/* Descargando: la flecha deja de seguir al dedo y gira sola */
+.ptr.is-refreshing {
+  color: var(--accent-violet-light);
+  border-color: var(--card-border-active);
+}
+
+.ptr.is-refreshing .ptr-arrow {
+  animation: spin 0.8s linear infinite;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ptr.is-refreshing .ptr-arrow { animation-duration: 2s; }
 }
 
 /* Estilo de Tarjeta Base */

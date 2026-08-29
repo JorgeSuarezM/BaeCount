@@ -3,6 +3,7 @@ import { fetchAvailableMonths, fetchMonthData } from './sheet_service.js';
 import { renderTrendsChart } from './chart_service.js';
 import { exportMonthsToPDF } from './pdf_service.js';
 import { signIn, clearSession, setSessionLostHandler, getCurrentEmail } from './auth_service.js';
+import { enablePullToRefresh } from './pull_to_refresh.js';
 
 // --- CONFIGURACIÓN Y ESTADO DE LA APP ---
 let availableMonths = []; // Array de {name}
@@ -11,6 +12,10 @@ let activeMonthName = '';
 let activeDesgloseTab = 'expenses'; // 'expenses' | 'incomes'
 let isRefreshing = false; // Evita recargas solapadas si se pulsa el botón varias veces
 let loadToken = 0; // Identifica la carga en curso para descartar respuestas obsoletas
+// Recarga sin vaciar la pantalla: al tirar hacia abajo el contenido se queda donde
+// está y solo gira el indicador, como en cualquier app. Sustituirlo por el esqueleto
+// de carga a mitad del gesto resulta brusco.
+let silentRefresh = false;
 let historicalMonthsCache = {}; // Cache: { 'Sep26': monthData }
 
 // Fallback por defecto indicado por el usuario
@@ -22,6 +27,8 @@ const statusDot = document.getElementById('status-indicator-dot');
 const statusText = document.getElementById('status-text');
 const refreshBtn = document.getElementById('refresh-btn');
 const signoutBtn = document.getElementById('signout-btn');
+
+const pullIndicator = document.getElementById('pull-indicator');
 
 const appContainer = document.getElementById('app');
 const loginScreen = document.getElementById('login-screen');
@@ -122,9 +129,11 @@ tabPdf.addEventListener('click', () => switchView('pdf'));
  * @param {boolean} isLoading 
  */
 function toggleLoading(isLoading) {
-  resumenSkeleton.classList.toggle('hidden', !isLoading);
-  resumenContent.classList.toggle('hidden', isLoading);
-  if (isLoading) setStatus('syncing', 'Descargando datos...');
+  if (!silentRefresh) {
+    resumenSkeleton.classList.toggle('hidden', !isLoading);
+    resumenContent.classList.toggle('hidden', isLoading);
+  }
+  if (isLoading) setStatus('syncing', 'Actualizando...');
 }
 
 /**
@@ -396,12 +405,16 @@ function populateMonthSelectors() {
  * Relee también la lista de pestañas, así que un mes nuevo creado en el documento
  * aparece en el selector sin tener que tocar código ni volver a desplegar.
  */
-async function refreshData() {
+async function refreshData({ silent = false } = {}) {
   if (isRefreshing) return;
 
   isRefreshing = true;
+  silentRefresh = silent;
   refreshBtn.disabled = true;
   refreshBtn.classList.add('is-refreshing');
+  // Antes de nada: releer las pestañas ya tarda, y hasta entonces el indicador
+  // seguía anunciando la hora de la actualización anterior.
+  setStatus('syncing', 'Actualizando...');
 
   try {
     // Descartar lo cacheado en memoria para forzar la descarga de todos los meses
@@ -427,6 +440,7 @@ async function refreshData() {
     await loadFinancialData(activeMonthName);
   } finally {
     isRefreshing = false;
+    silentRefresh = false;
     refreshBtn.disabled = false;
     refreshBtn.classList.remove('is-refreshing');
   }
@@ -435,7 +449,16 @@ async function refreshData() {
 // --- EVENT LISTENERS DE CONTROLES ---
 
 // Botón de actualización manual
-refreshBtn.addEventListener('click', refreshData);
+refreshBtn.addEventListener('click', () => refreshData());
+
+// Y el mismo refresco tirando hacia abajo desde arriba del todo, en móvil
+enablePullToRefresh({
+  container: document.querySelector('.app-content'),
+  indicator: pullIndicator,
+  onRefresh: () => refreshData({ silent: true }),
+  // Sin sesión no hay nada que recargar
+  enabled: () => !appContainer.classList.contains('hidden') && !isRefreshing,
+});
 
 // Selector de mes en cabecera
 monthSelect.addEventListener('change', (e) => {
