@@ -1,5 +1,5 @@
 /**
- * Autenticación compartida por las funciones de /api.
+ * Autenticación compartida por los endpoints de /api.
  *
  * Tres cosas distintas que conviene no mezclar:
  *
@@ -9,7 +9,7 @@
  *
  *  2. Cómo se recuerda la sesión. Ese ID token dura una hora y solo existe mientras la
  *     pestaña está abierta, así que en cuanto se valida emitimos una sesión propia:
- *     un JWT corto firmado con SESSION_SECRET que viaja en una cookie HttpOnly de 24
+ *     un token corto firmado con SESSION_SECRET que viaja en una cookie HttpOnly de 24
  *     horas. Al ser HttpOnly no la puede leer ningún script de la página, y al ser una
  *     cookie el navegador la reenvía sola cuando se reabre la web o la PWA.
  *
@@ -21,6 +21,9 @@
  * cuenta aunque la app esté en modo de prueba, porque solo pedimos el perfil básico.
  * Se vuelve a comprobar en cada petición, no solo al entrar, para que quitar un correo
  * de ALLOWED_EMAILS cierre también las sesiones que ya estaban abiertas.
+ *
+ * Las funciones que tocan cookies reciben el contexto del endpoint de Astro, que es
+ * quien sabe leer y escribir las cabeceras de la petición en curso.
  */
 
 import { createHmac, timingSafeEqual } from 'node:crypto';
@@ -34,12 +37,33 @@ const SESSION_COOKIE = 'baecount_session';
 /** Cuánto dura la sesión sin volver a pasar por Google. */
 export const SESSION_MAX_AGE_SECONDS = 24 * 60 * 60;
 
-/** Error con código HTTP, para que el handler responda con el estado adecuado. */
+/** Error con código HTTP, para que el endpoint responda con el estado adecuado. */
 export class HttpError extends Error {
   constructor(status, message) {
     super(message);
     this.status = status;
   }
+}
+
+/** Respuesta JSON sin caché: las cifras cambian a mano en la hoja. */
+export function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store, max-age=0, must-revalidate',
+    },
+  });
+}
+
+/** Traduce cualquier fallo del endpoint a una respuesta con el estado correcto. */
+export function errorResponse(error, context) {
+  if (error instanceof HttpError) {
+    return json({ error: error.message }, error.status);
+  }
+
+  console.error(`Error inesperado en ${context}:`, error);
+  return json({ error: `Error interno en ${context}.` }, 500);
 }
 
 /** Lee una variable de entorno obligatoria y avisa claramente si falta. */
@@ -123,56 +147,38 @@ function verifySessionToken(token) {
   return String(payload.email || '').toLowerCase();
 }
 
-/** Extrae una cookie de la cabecera, sin depender de los helpers de Vercel. */
-function readCookie(req, name) {
-  const header = req.headers?.cookie || '';
-
-  for (const part of header.split(';')) {
-    const index = part.indexOf('=');
-    if (index === -1) continue;
-
-    if (part.slice(0, index).trim() === name) {
-      return decodeURIComponent(part.slice(index + 1).trim());
-    }
-  }
-
-  return '';
-}
-
 /**
- * `Secure` impide que la cookie viaje por HTTP. En producción siempre, pero en
- * `vercel dev` la app se sirve por http://localhost y la cookie se descartaría.
+ * Atributos comunes de la cookie. `secure` impide que viaje por HTTP, pero en
+ * `astro dev` la app se sirve por http://localhost y la cookie se descartaría.
+ * SameSite=Lax basta: todas las peticiones a /api salen de la propia app.
  */
-function isSecureRequest(req) {
-  const host = String(req.headers?.host || '');
-  return !host.startsWith('localhost') && !host.startsWith('127.0.0.1');
+function cookieOptions(url) {
+  return {
+    path: '/',
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: url.protocol === 'https:',
+  };
 }
 
 /**
  * Emite la cookie de sesión para un correo verificado.
- * SameSite=Lax basta: todas las peticiones a /api salen de la propia app.
+ * @param {import('astro').APIContext} context
+ * @param {string} email
  */
-export function setSessionCookie(req, res, email) {
-  const attributes = [
-    `${SESSION_COOKIE}=${createSessionToken(email)}`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Lax',
-    `Max-Age=${SESSION_MAX_AGE_SECONDS}`,
-  ];
-
-  if (isSecureRequest(req)) attributes.push('Secure');
-
-  res.setHeader('Set-Cookie', attributes.join('; '));
+export function setSessionCookie({ cookies, url }, email) {
+  cookies.set(SESSION_COOKIE, createSessionToken(email), {
+    ...cookieOptions(url),
+    maxAge: SESSION_MAX_AGE_SECONDS,
+  });
 }
 
-/** Borra la cookie de sesión (cerrar sesión). */
-export function clearSessionCookie(req, res) {
-  const attributes = [`${SESSION_COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
-
-  if (isSecureRequest(req)) attributes.push('Secure');
-
-  res.setHeader('Set-Cookie', attributes.join('; '));
+/**
+ * Borra la cookie de sesión (cerrar sesión).
+ * @param {import('astro').APIContext} context
+ */
+export function clearSessionCookie({ cookies, url }) {
+  cookies.delete(SESSION_COOKIE, cookieOptions(url));
 }
 
 // --- Google ----------------------------------------------------------------
@@ -220,11 +226,11 @@ export async function verifyGoogleIdToken(idToken) {
 
 /**
  * Comprueba que la petición trae una sesión viva de un correo autorizado.
- * @param {import('http').IncomingMessage} req
+ * @param {import('astro').APIContext} context
  * @returns {Promise<string>} El correo verificado
  */
-export async function requireAllowedUser(req) {
-  const cookie = readCookie(req, SESSION_COOKIE);
+export async function requireAllowedUser({ cookies }) {
+  const cookie = cookies.get(SESSION_COOKIE)?.value;
 
   if (!cookie) {
     throw new HttpError(401, 'Sesión no iniciada.');

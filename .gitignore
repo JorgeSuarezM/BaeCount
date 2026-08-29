@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Generado por Astro y por el adaptador de Vercel
+.astro
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -32,3 +35,6 @@ dist-ssr
 .env.*
 !.env.example
 service-account*.json
+
+# Salida del adaptador de Vercel
+.vercel

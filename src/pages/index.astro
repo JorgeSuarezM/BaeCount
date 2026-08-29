@@ -1,22 +1,31 @@
+---
+// Página única de BaeCount. El marcado es el mismo que servía el index.html de Vite:
+// la app se dibuja entera en el cliente a partir de estos contenedores.
+//
+// La hoja de estilos se importa aquí (y no desde el script) para que Astro la
+// emita como <link> en el <head> y no haya un salto de estilos al cargar.
+import '../styles/style.css';
+---
+
 <!doctype html>
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>BaeCount - Finanzas Compartidas</title>
-    
+
     <!-- Meta tags para SEO y PWA -->
     <meta name="description" content="Organiza y consulta los gastos mensuales con tu pareja de forma proporcional." />
     <meta name="theme-color" content="#8b5cf6" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="BaeCount" />
-    
+
     <!-- Iconos y Manifiesto -->
     <link rel="icon" type="image/png" href="/baecount_icon.png" />
     <link rel="apple-touch-icon" href="/baecount_icon.png" />
     <link rel="manifest" href="/manifest.json" />
-    
+
     <!-- Google Fonts: Outfit e Inter -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -263,6 +272,8 @@
 
     </div>
     
-    <script type="module" src="/src/main.js"></script>
+    <script>
+      import '../scripts/app.js';
+    </script>
   </body>
 </html>

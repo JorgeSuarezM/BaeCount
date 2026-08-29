@@ -1,8 +1,7 @@
-import './style.css';
-import { fetchAvailableMonths, fetchMonthData } from './sheet_service.js';
-import { renderTrendsChart } from './chart_service.js';
-import { exportMonthsToPDF } from './pdf_service.js';
-import { signIn, restoreSession, clearSession, setSessionLostHandler, getCurrentEmail } from './auth_service.js';
+import { fetchAvailableMonths, fetchMonthData } from '../lib/sheet_service.js';
+import { renderTrendsChart } from '../lib/chart_service.js';
+import { exportMonthsToPDF } from '../lib/pdf_service.js';
+import { signIn, restoreSession, clearSession, setSessionLostHandler, getCurrentEmail } from '../lib/auth_service.js';
 
 // --- CONFIGURACIÓN Y ESTADO DE LA APP ---
 let availableMonths = []; // Array de {name}

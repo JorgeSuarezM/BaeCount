@@ -1,5 +1,5 @@
 /**
- * Vercel Serverless Function: /api/config
+ * GET /api/config
  *
  * Devuelve el ID de cliente OAuth para que el navegador pueda pintar el botón de
  * Google. Es un dato público (viaja en cada petición de login), así que este
@@ -9,20 +9,20 @@
  * editar una variable de entorno, sin tener que reconstruir el frontend.
  */
 
-export default function handler(req, res) {
-  res.setHeader('Cache-Control', 'no-store, max-age=0, must-revalidate');
+import { json } from '../../lib/server/auth.js';
 
-  if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Método no permitido.' });
-  }
+// Lee variables de entorno en cada petición, así que no se puede prerenderizar.
+export const prerender = false;
 
+export function GET() {
   const clientId = process.env.GOOGLE_CLIENT_ID;
 
   if (!clientId) {
-    return res.status(500).json({
-      error: 'Falta la variable de entorno GOOGLE_CLIENT_ID en el proyecto de Vercel.',
-    });
+    return json(
+      { error: 'Falta la variable de entorno GOOGLE_CLIENT_ID en el proyecto de Vercel.' },
+      500
+    );
   }
 
-  return res.status(200).json({ clientId });
+  return json({ clientId });
 }

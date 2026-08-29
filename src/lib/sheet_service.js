@@ -5,8 +5,8 @@
  * Google con una cuenta de servicio. La hoja ya no está publicada en la web, así que
  * todo pasa por ahí y el navegador adjunta solo la cookie de sesión.
  *
- * En desarrollo hace falta `vercel dev` (con las variables de entorno configuradas)
- * para que /api exista; con `npm run dev` a secas esa ruta no está servida.
+ * En desarrollo `npm run dev` ya sirve /api: los endpoints son rutas de Astro, así
+ * que basta con tener las variables de entorno en un .env local.
  */
 
 import { clearSession } from './auth_service.js';
