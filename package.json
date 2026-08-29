@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "chart.js": "^4.5.1",
+    "google-auth-library": "^10.9.1",
     "jspdf": "^4.2.1"
   },
   "engines": {

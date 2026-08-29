@@ -1,17 +1,17 @@
 /**
- * Servicio para conectar y parsear los datos de Google Sheets de BaeCount.
- * Los datos se obtienen a través de /api/sheets, una función serverless en Vercel
- * que actúa de proxy para evitar las restricciones CORS del navegador.
+ * Servicio para leer los datos de BaeCount desde Google Sheets.
  *
- * En desarrollo hay que levantar el proyecto con `vercel dev` para que /api/sheets exista;
- * con `npm run dev` (Vite a secas) esa ruta no está servida.
+ * Las peticiones van a /api/sheets, una función serverless que consulta la API de
+ * Google con una cuenta de servicio. La hoja ya no está publicada en la web, así que
+ * todo pasa por ahí y cada llamada viaja firmada con el ID token de la sesión.
+ *
+ * En desarrollo hace falta `vercel dev` (con las variables de entorno configuradas)
+ * para que /api exista; con `npm run dev` a secas esa ruta no está servida.
  */
 
-const PROXY_URL = '/api/sheets';
+import { getIdToken, clearSession } from './auth_service.js';
 
-// Opciones de fetch para no leer nunca de la caché del navegador: los datos del Sheet
-// cambian a mano y hay que ver el último valor tanto al recargar como al pulsar "Actualizar".
-const NO_CACHE = { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } };
+const API_URL = '/api/sheets';
 
 // Pestañas que representan meses: Sep26, Ago26, Oct27...
 const MONTH_TAB_REGEX = /^([A-Za-z]{3,4})(\d{2})$/;
@@ -36,28 +36,39 @@ function monthSortKey(name) {
 }
 
 /**
- * Parsea una línea de CSV respetando las comillas para textos con comas.
- * @param {string} text 
- * @returns {string[]}
+ * Llama a /api/sheets con el token de la sesión.
+ * Si el servidor rechaza la sesión, se cierra para que la app vuelva al login.
+ * @param {Record<string, string>} params
+ * @returns {Promise<Object>}
  */
-function parseCSVLine(text) {
-  const result = [];
-  let insideQuote = false;
-  let currentField = '';
-  
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    if (char === '"') {
-      insideQuote = !insideQuote;
-    } else if (char === ',' && !insideQuote) {
-      result.push(currentField.trim());
-      currentField = '';
-    } else {
-      currentField += char;
-    }
+async function callApi(params) {
+  const token = getIdToken();
+  if (!token) {
+    throw new Error('No hay sesión iniciada.');
   }
-  result.push(currentField.trim());
-  return result;
+
+  const query = new URLSearchParams({ ...params, t: String(Date.now()) });
+  const response = await fetch(`${API_URL}?${query}`, {
+    cache: 'no-store',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({}));
+    const message = detail.error || `Error ${response.status} al leer la hoja de cálculo.`;
+
+    const error = new Error(message);
+
+    if (response.status === 401 || response.status === 403) {
+      // La app ya vuelve al login con este mensaje, así que se marca para que
+      // quien lo capture no muestre además una alerta encima.
+      error.sessionLost = true;
+      clearSession(message);
+    }
+    throw error;
+  }
+
+  return response.json();
 }
 
 /**
@@ -84,49 +95,29 @@ function parseSpanishNumber(val) {
 }
 
 /**
- * Obtiene las pestañas de mes que existen realmente en el documento.
- * El proxy lee /pubhtml server-side y devuelve el nombre y el gid de cada pestaña;
- * aquí nos quedamos solo con las que tienen forma de mes y las ordenamos cronológicamente.
- * @returns {Promise<{name: string, gid: string}[]>}
+ * Obtiene las pestañas de mes que existen realmente en el documento, ordenadas
+ * cronológicamente. Al crear un mes nuevo en la hoja aparece solo, sin tocar código.
+ * @returns {Promise<{name: string}[]>}
  */
 export async function fetchAvailableMonths() {
-  const response = await fetch(`${PROXY_URL}?list=1&t=${Date.now()}`, NO_CACHE);
-
-  if (!response.ok) {
-    const errData = await response.json().catch(() => ({}));
-    throw new Error(errData.error || `Error ${response.status} al listar las pestañas del documento.`);
-  }
-
-  const { sheets = [] } = await response.json();
+  const { sheets = [] } = await callApi({ list: '1' });
 
   return sheets
-    .map((sheet) => ({ ...sheet, sortKey: monthSortKey(sheet.name) }))
+    .map((sheet) => ({ name: sheet.name, sortKey: monthSortKey(sheet.name) }))
     .filter((sheet) => sheet.sortKey !== null)
     .sort((a, b) => a.sortKey - b.sortKey)
-    .map(({ name, gid }) => ({ name, gid }));
+    .map(({ name }) => ({ name }));
 }
 
 /**
  * Descarga y parsea la información financiera de un mes específico.
- * @param {string} gid GID numérico de la pestaña (ej. "7725638")
  * @param {string} monthName Nombre de la pestaña (ej. Sep26)
  * @returns {Promise<Object>} Datos financieros estructurados
  */
-export async function fetchMonthData(gid, monthName) {
+export async function fetchMonthData(monthName) {
   try {
-    // Llamamos al proxy serverless de Vercel (/api/sheets) con el gid de la pestaña.
-    // El proxy hace la petición a Google server-side (sin restricciones CORS) y nos devuelve el CSV.
-    // El sufijo `t` evita cachés intermedias que ignoren las cabeceras no-store.
-    const url = `${PROXY_URL}?gid=${encodeURIComponent(gid)}&t=${Date.now()}`;
-    const response = await fetch(url, NO_CACHE);
-
-    if (!response.ok) {
-      const errData = await response.json().catch(() => ({}));
-      throw new Error(errData.error || `Error ${response.status} al descargar el mes: ${monthName}`);
-    }
-    
-    const csvText = await response.text();
-    const lines = csvText.split(/\r?\n/);
+    // La API devuelve las filas ya separadas en celdas, así que no hay CSV que parsear.
+    const { values = [] } = await callApi({ tab: monthName });
     
     const result = {
       month: monthName,
@@ -152,14 +143,16 @@ export async function fetchMonthData(gid, monthName) {
     
     let currentSection = null; // 'incomes' | 'expenses' | 'balance'
     
-    for (let line of lines) {
-      if (!line.trim()) continue;
-      const columns = parseCSVLine(line);
-      // Solo descartamos las filas separadoras (",,"). La fila del balance real llega
-      // como ",Real,0", con la primera celda vacía, y hay que dejarla pasar.
+    for (const row of values) {
+      // La API omite las celdas vacías del final, así que las filas pueden venir
+      // cortas; normalizamos para poder leer columns[1] y columns[2] sin comprobar.
+      const columns = [0, 1, 2].map((i) => String(row?.[i] ?? '').trim());
+
+      // Descartamos solo las filas separadoras, completamente vacías. La del balance
+      // real llega como ["", "Real", "900"] y hay que dejarla pasar.
       if (columns.every((col) => !col)) continue;
-      
-      const firstCol = (columns[0] || '').trim();
+
+      const firstCol = columns[0];
       
       // Detectar cambios de sección
       if (firstCol.toLowerCase() === 'ingresos') {

@@ -2,9 +2,10 @@ import './style.css';
 import { fetchAvailableMonths, fetchMonthData } from './sheet_service.js';
 import { renderTrendsChart } from './chart_service.js';
 import { exportMonthsToPDF } from './pdf_service.js';
+import { signIn, clearSession, setSessionLostHandler, getCurrentEmail } from './auth_service.js';
 
 // --- CONFIGURACIÓN Y ESTADO DE LA APP ---
-let availableMonths = []; // Array de {name, gid}
+let availableMonths = []; // Array de {name}
 let activeMonthData = null; // Datos ya parseados del mes en pantalla
 let activeMonthName = '';
 let activeDesgloseTab = 'expenses'; // 'expenses' | 'incomes'
@@ -20,6 +21,12 @@ const monthSelect = document.getElementById('month-select');
 const statusDot = document.getElementById('status-indicator-dot');
 const statusText = document.getElementById('status-text');
 const refreshBtn = document.getElementById('refresh-btn');
+const signoutBtn = document.getElementById('signout-btn');
+
+const appContainer = document.getElementById('app');
+const loginScreen = document.getElementById('login-screen');
+const googleButton = document.getElementById('google-button');
+const loginError = document.getElementById('login-error');
 
 const resumenView = document.getElementById('resumen-view');
 const resumenSkeleton = document.getElementById('resumen-skeleton');
@@ -277,7 +284,7 @@ async function loadAndRenderTrends() {
       return historicalMonthsCache[monthObj.name];
     }
     try {
-      const monthData = await fetchMonthData(monthObj.gid, monthObj.name);
+      const monthData = await fetchMonthData(monthObj.name);
       historicalMonthsCache[monthObj.name] = monthData;
       return monthData;
     } catch (e) {
@@ -312,7 +319,7 @@ async function loadFinancialData(monthName) {
     if (historicalMonthsCache[monthName]) {
       monthData = historicalMonthsCache[monthName];
     } else {
-      monthData = await fetchMonthData(selectedSheet.gid, selectedSheet.name);
+      monthData = await fetchMonthData(selectedSheet.name);
       historicalMonthsCache[monthName] = monthData;
     }
 
@@ -341,7 +348,9 @@ async function loadFinancialData(monthName) {
       monthSelect.value = previousMonthName;
     }
 
-    alert(`No se pudieron descargar los datos de ${monthName}: ${error.message}`);
+    if (!error.sessionLost) {
+      alert(`No se pudieron descargar los datos de ${monthName}: ${error.message}`);
+    }
   } finally {
     if (token === loadToken) toggleLoading(false);
   }
@@ -482,7 +491,7 @@ downloadPdfBtn.addEventListener('click', async () => {
       if (historicalMonthsCache[sheetObj.name]) {
         return historicalMonthsCache[sheetObj.name];
       }
-      const data = await fetchMonthData(sheetObj.gid, sheetObj.name);
+      const data = await fetchMonthData(sheetObj.name);
       historicalMonthsCache[sheetObj.name] = data;
       return data;
     }));
@@ -491,7 +500,9 @@ downloadPdfBtn.addEventListener('click', async () => {
     exportMonthsToPDF(rangeData, fromVal, toVal);
   } catch (error) {
     console.error('Error al generar el extracto PDF:', error);
-    alert(`No se pudo generar el extracto: ${error.message}`);
+    if (!error.sessionLost) {
+      alert(`No se pudo generar el extracto: ${error.message}`);
+    }
   } finally {
     // Restaurar estado del botón
     downloadPdfBtn.disabled = false;
@@ -541,18 +552,76 @@ async function init() {
     console.error('Fallo en la inicialización:', error);
     setStatus('offline', 'Error al conectar con la hoja de cálculo.');
     toggleLoading(false);
-    alert(`Error al inicializar BaeCount: ${error.message}`);
+
+    // Si el problema es la sesión, ya se ha vuelto al login con el motivo
+    if (!error.sessionLost) {
+      alert(`Error al inicializar BaeCount: ${error.message}`);
+    }
   }
 }
 
-// Ejecutar init al cargar la página
-window.addEventListener('DOMContentLoaded', init);
+// --- CONTROL DE ACCESO ---
+
+/** Muestra la pantalla de acceso y oculta la app. */
+function showLogin(message) {
+  loginScreen.classList.remove('hidden');
+  appContainer.classList.add('hidden');
+
+  if (message) {
+    loginError.textContent = message;
+    loginError.classList.remove('hidden');
+  } else {
+    loginError.classList.add('hidden');
+  }
+}
+
+/** Oculta la pantalla de acceso y muestra la app. */
+function showApp() {
+  loginScreen.classList.add('hidden');
+  appContainer.classList.remove('hidden');
+  loginError.classList.add('hidden');
+}
+
+/**
+ * Espera a que el usuario inicie sesión y arranca la app.
+ * Si el servidor rechaza la cuenta, se vuelve aquí con el motivo.
+ */
+async function startSession(message) {
+  showLogin(message);
+
+  try {
+    await signIn(googleButton);
+  } catch (error) {
+    console.error('Fallo al iniciar sesión:', error);
+    showLogin(error.message);
+    return;
+  }
+
+  showApp();
+
+  const email = getCurrentEmail();
+  if (email) signoutBtn.title = `Cerrar sesión (${email})`;
+
+  await init();
+}
+
+// El servidor manda: si rechaza el token o el correo, se vuelve al login.
+setSessionLostHandler((reason) => {
+  startSession(reason);
+});
+
+signoutBtn.addEventListener('click', () => {
+  clearSession();
+});
+
+// Ejecutar al cargar la página
+window.addEventListener('DOMContentLoaded', () => startSession());
 
 // Al volver atrás/adelante (o al reabrir la PWA) el navegador puede restaurar la página
 // desde la bfcache sin lanzar DOMContentLoaded. En ese caso los datos en pantalla son
 // los de la última visita, así que los volvemos a descargar.
 window.addEventListener('pageshow', (event) => {
-  if (event.persisted && availableMonths.length > 0) {
+  if (event.persisted && availableMonths.length > 0 && !appContainer.classList.contains('hidden')) {
     refreshData();
   }
 });

@@ -25,3 +25,10 @@ dist-ssr
 
 # Artefacto de empaquetado, no forma parte del código fuente
 *.zip
+
+# Credenciales de Google: nunca deben entrar en el repositorio
+*.pem
+.env
+.env.*
+!.env.example
+service-account*.json
